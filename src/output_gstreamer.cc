@@ -154,93 +154,357 @@ struct track_time_info {
 };
 static struct track_time_info last_known_time_ = {0, 0};
 
-static GstState get_current_player_state() {
-  GstState state = GST_STATE_PLAYING;
-  GstState pending = GST_STATE_NULL;
-  gst_element_get_state(player_, &state, &pending, 0);
-  return state;
-}
 
-static void output_gstreamer_set_next_uri(const char *uri) {
-  Log_info("gstreamer", "Set next uri to '%s'", uri);
-  free(gs_next_uri_);
-  gs_next_uri_ = (uri && *uri) ? strdup(uri) : NULL;
-}
+/**
+  @brief  Initialize the output module
 
-static void output_gstreamer_set_uri(const char *uri,
-                                     output_update_meta_cb_t meta_cb) {
-  Log_info("gstreamer", "Set uri to '%s'", uri);
-  free(gsuri_);
-  gsuri_ = (uri && *uri) ? strdup(uri) : NULL;
-  meta_update_callback_ = meta_cb;
-  SongMetaData_clear(&song_meta_);
-}
+  @param  none
+  @retval result_t
+*/
+OutputModule::result_t GstreamerOutput::initalize(void)
+{
+  // TODO Tucker
+  //SongMetaData_init(&song_meta_);
+  //scan_mime_list();
 
-static int output_gstreamer_play(output_transition_cb_t callback) {
-  play_trans_callback_ = callback;
-  if (get_current_player_state() != GST_STATE_PAUSED) {
-    if (gst_element_set_state(player_, GST_STATE_READY) ==
-        GST_STATE_CHANGE_FAILURE) {
-      Log_error("gstreamer", "setting play state failed (1)");
-      // Error, but continue; can't get worse :)
-    }
-    g_object_set(G_OBJECT(player_), "uri", gsuri_, NULL);
+  // TODO Tucker feed in as arguments, constructor?
+  if (audio_sink != NULL && audio_pipe != NULL) 
+  {
+    Log_error("gstreamer", "--gstout-audosink and --gstout-audiopipe are mutually exclusive.");
+    return OutputModule::Error;
   }
-  if (gst_element_set_state(player_, GST_STATE_PLAYING) ==
-      GST_STATE_CHANGE_FAILURE) {
-    Log_error("gstreamer", "setting play state failed (2)");
-    return -1;
+
+#if (GST_VERSION_MAJOR < 1)
+  const char player_element_name[] = "playbin2";
+#else
+  const char player_element_name[] = "playbin";
+#endif
+
+  this->player = gst_element_factory_make(player_element_name, "play");
+  if (this->player == NULL)
+    return OutputModule::Error; // TODO Tucker assert?
+
+  // Configure buffering if enabled
+  if (buffer_duration > 0) 
+  {
+    int64_t buffer_duration_ns = round(buffer_duration * 1.0e9);
+    Log_info("gstreamer", "Setting buffer duration to %ldms", buffer_duration_ns / 1000000);
+    g_object_set(G_OBJECT(this->player), "buffer-duration", (gint64) buffer_duration_ns, NULL);
+  } 
+  else 
+  {
+    Log_info("gstreamer", "Buffering disabled (--gstout-buffer-duration)");
   }
+
+  GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(this->player));
+  gst_bus_add_watch(bus, my_bus_callback, NULL); // TODO Tucker rename callback for bus
+  gst_object_unref(bus);
+
+  GstElement* sink = NULL;
+  if (audio_sink)
+  {
+    Log_info("gstreamer", "Setting audio sink to %s; device=%s\n", audio_sink, audio_device ? audio_device : "");
+   
+    sink = gst_element_factory_make(audio_sink, "sink");
+    if (sink == NULL)
+      Log_error("gstreamer", "Couldn't create sink '%s'", audio_sink);
+  }
+  else if (audio_pipe) 
+  {
+    Log_info("gstreamer", "Setting audio sink-pipeline to %s\n", audio_pipe);
+   
+    sink = gst_parse_bin_from_description(audio_pipe, TRUE, NULL);
+    if (sink == NULL)
+      Log_error("gstreamer", "Could not create pipeline.");
+  }
+
+  if (sink != NULL)
+  {
+    // Add the audio device if it exists
+    if (audio_device != NULL) {
+      g_object_set(G_OBJECT(sink), "device", audio_device, NULL);
+
+    g_object_set(G_OBJECT(this->player), "audio-sink", sink, NULL);
+  }
+
+  if (videosink != NULL)
+  {
+    Log_info("gstreamer", "Setting video sink to %s", videosink);
+
+    GstElement* vsink = gst_element_factory_make(videosink, "sink");
+    if (vsink == NULL)
+      Log_error("gstreamer", "Couldn't create sink '%s'", videosink);
+    else
+      g_object_set(G_OBJECT(this->player), "video-sink", vsink, NULL);
+  }
+
+  if (gst_element_set_state(this->player, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE) 
+    Log_error("gstreamer", "Error: pipeline doesn't become ready.");
+
+  g_signal_connect(G_OBJECT(this->players), "about-to-finish", G_CALLBACK([](GstElement* o, gpointer d) =>
+  {  
+    ((GstreamerOutput*) d)->next_stream();;
+  }), this);
+  
+  output_gstreamer_set_mute(0);
+
+  if (initial_db < 0)
+    output_gstreamer_set_volume(exp(initial_db / 20 * log(10)));
+
   return 0;
 }
 
-static int output_gstreamer_stop(void) {
-  if (gst_element_set_state(player_, GST_STATE_READY) ==
-      GST_STATE_CHANGE_FAILURE) {
-    return -1;
-  } else {
-    return 0;
-  }
-}
 
-static int output_gstreamer_pause(void) {
-  if (gst_element_set_state(player_, GST_STATE_PAUSED) ==
-      GST_STATE_CHANGE_FAILURE) {
-    return -1;
-  } else {
-    return 0;
-  }
-}
+/**
+  @brief  Sets the next stream for playback. Triggered by the "about-to-finish" signal
 
-static int output_gstreamer_seek(gint64 position_nanos) {
-  if (gst_element_seek(player_, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH,
-                       GST_SEEK_TYPE_SET, position_nanos, GST_SEEK_TYPE_NONE,
-                       GST_CLOCK_TIME_NONE)) {
-    return -1;
-  } else {
-    return 0;
-  }
-}
-
-#if 0
-static const char *gststate_get_name(GstState state)
+  @param  none
+  @retval void
+*/
+void GstreamerOutput::next_stream(void)
 {
-	switch(state) {
-	case GST_STATE_VOID_PENDING:
-		return "VOID_PENDING";
-	case GST_STATE_NULL:
-		return "NULL";
-	case GST_STATE_READY:
-		return "READY";
-	case GST_STATE_PAUSED:
-		return "PAUSED";
-	case GST_STATE_PLAYING:
-		return "PLAYING";
-	default:
-		return "Unknown";
-	}
+  Log_info("gstreamer", "about-to-finish cb: setting uri %s", this->next_uri.c_str());
+
+  // Swap contents of next URI into current URI
+  this->uri.swap(this->next_uri);
+
+  // Cear next URI so we don't repeat
+  this->next_uri.clear();
+
+  if (this->uri.length() > 0)
+  {
+    g_object_set(G_OBJECT(this->player), "uri", this->uri.c_str(), NULL);
+
+    // TODO Tucker callback
+    //if (play_trans_callback_) {
+    //  // TODO(hzeller): can we figure out when we _actually_
+    //  // start playing this ? there are probably a couple
+    //  // of seconds between now and actual start.
+    //  play_trans_callback_(PLAY_STARTED_NEXT_STREAM);
+    //}
+  }
 }
+
+/**
+  @brief  Get the current state of the Gstreamer player
+
+  @param  none
+  @retval GstState
+*/
+void GstreamerOutput::get_player_state(void)
+{
+  GstState state = GST_STATE_PLAYING; // TODO Tucker, default to playing?
+  gst_element_get_state(this->player, &state, NULL, 0);
+  
+  return state;
+}
+
+/**
+  @brief  Set the URI of the Gstreamer playback module
+
+  @param  uri URI to set
+  @retval none
+*/
+void GstreamerOutput::set_uri(const std::string &uri)
+{
+  Log_info("gstreamer", "Set uri to '%s'", uri.c_str());
+
+  this->uri = uri;
+
+  // TODO Tucker Not sure how I feel about this callback. Is it really the 
+  // job of the output to provide meta data updates?
+  //meta_update_callback_ = meta_cb;
+  //SongMetaData_clear(&song_meta_);
+}
+
+/**
+  @brief  Set the next URI of the Gstreamer playback module
+
+  @param  uri URI to set
+  @retval none
+*/
+void GstreamerOutput::set_next_uri(const std::string &uri)
+{
+  Log_info("gstreamer", "Set next uri to '%s'", uri.c_str());
+
+  this->next_uri = uri;
+}
+
+/**
+  @brief  Start playback
+
+  @param  none
+  @retval result_t
+*/
+OutputModule::result_t GstreamerOutput::play(void)
+{
+  // TODO Tucker callbacks
+  //play_trans_callback_ = callback;
+
+  if (get_current_player_state() != GST_STATE_PAUSED) 
+  {
+    if (gst_element_set_state(this->player, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE) 
+      Log_error("gstreamer", "setting play state failed (1)"); // Error, but continue; can't get worse :)
+
+    g_object_set(G_OBJECT(this->player), "uri", this->uri.c_str(), NULL);
+  }
+
+  if (gst_element_set_state(this->player, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) 
+  {
+    Log_error("gstreamer", "setting play state failed (2)");
+    return OutputModule::Error
+  }
+
+  return OutputModule::Success;
+}
+
+/**
+  @brief  Stop playback
+
+  @param  none
+  @retval result_t
+*/
+OutputModule::result_t GstreamerOutput::stop(void)
+{
+  if (gst_element_set_state(this->player, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE)
+    return OutputModule::Error;
+  
+  return OutputModule::Success;
+}
+
+/**
+  @brief  Pause playback
+
+  @param  none
+  @retval result_t
+*/
+OutputModule::result_t GstreamerOutput::pause(void)
+{
+  if (gst_element_set_state(this->player, GST_STATE_PAUSED) == GST_STATE_CHANGE_FAILURE)
+    return OutputModule::Error;
+  
+  return OutputModule::Success;
+}
+
+/**
+  @brief  Seek player to supplied time position
+
+  @param  position_ns Seek position in nanoseconds
+  @retval result_t
+*/
+OutputModule::result_t GstreamerOutput::seek(int64_t position_ns)
+{
+  if (gst_element_seek(this->player, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH, GST_SEEK_TYPE_SET, (gint64) position_ns, GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE))
+    return OutputModule::Success;
+  
+  return OutputModule::Error;
+}
+
+/**
+  @brief  Get the duration and position of the current track
+
+  @param  track track_state_t to populate with duration and position information
+  @retval result_t
+*/
+OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
+{
+  // TODO Tucker
+  //*track_duration = last_known_time_.duration;
+  //*track_pos = last_known_time_.position;
+
+  if (this->get_player_state() != GST_STATE_PLAYING)
+    return OutputModule::Success;
+    
+#if (GST_VERSION_MAJOR < 1)
+  GstFormat fmt = GST_FORMAT_TIME;
+  GstFormat* query_type = &fmt;
+#else
+  GstFormat query_type = GST_FORMAT_TIME;
 #endif
+
+  OutputModule::result_t result = OutputModule::Success;
+  if (!gst_element_query_duration(this->player, query_type, (gint64*) &position->duration_ns))
+  {
+    Log_error("gstreamer", "Failed to get track duration.");
+    result = OutputModule::Error;
+  }
+  
+  if (!gst_element_query_position(this->player, query_type, (gint64*) &position->position_ns)) 
+  {
+    Log_error("gstreamer", "Failed to get track pos");
+    result = OutputModule::Error;
+  }
+  
+  // playbin2 does not allow to query while paused. Remember in case
+  // we're asked then (it actually returns something, but it is bogus).
+  // TODO Tucker
+  //last_known_time_.duration = *track_duration;
+  //last_known_time_.position = *track_pos;
+
+  return result;
+}
+
+/**
+  @brief  Get the volume of the Gstreamer output
+
+  @param  volume Current volume (0.0 - 1.0)
+  @retval result_t
+*/
+OutputModule::result_t GstreamerOutput::get_volume(float* volume)
+{
+  double vol = 0;
+  g_object_get(this->player, "volume", &vol, NULL);
+
+  *volume = (float) vol;
+
+  Log_info("gstreamer", "Query volume fraction: %f", vol);
+
+  result OutputModule::Success;
+}
+
+/**
+  @brief  Set the volume of the Gstreamer output
+
+  @param  volume Desired volume (0.0 - 1.0)
+  @retval result_t
+*/
+OutputModule::result_t GstreamerOutput::set_volume(float* volume)
+{
+  Log_info("gstreamer", "Set volume fraction to %f", value);
+  
+  g_object_set(this->player, "volume", (double) volume, NULL);
+
+  result OutputModule::Success;
+}
+
+/**
+  @brief  Get the mute state of the Gstreamer output
+
+  @param  bool Mute state
+  @retval result_t
+*/
+OutputModule::result_t GstreamerOutput::get_mute(bool* mute)
+{
+  gboolean val = false;
+  g_object_get(this->player, "mute", &val, NULL);
+
+  *mute = (bool) val;
+
+  result OutputModule::Success;
+}
+
+/**
+  @brief  Set the mute on the Gstreamer output
+
+  @param  mute Mute state
+  @retval result_t
+*/
+OutputModule::result_t GstreamerOutput::set_mute(bool mute)
+{
+  g_object_set(this->player, "mute", (gboolean) mute, NULL);
+
+  result OutputModule::Success;
+}
 
 // This is crazy. I want C++ :)
 struct MetaModify {
@@ -422,76 +686,28 @@ static int output_gstreamer_add_options(GOptionContext *ctx) {
   return 0;
 }
 
-static int output_gstreamer_get_position(gint64 *track_duration,
-                                         gint64 *track_pos) {
-  *track_duration = last_known_time_.duration;
-  *track_pos = last_known_time_.position;
-
-  int rc = 0;
-  if (get_current_player_state() != GST_STATE_PLAYING) {
-    return rc;  // playbin2 only returns valid values then.
-  }
-#if (GST_VERSION_MAJOR < 1)
-  GstFormat fmt = GST_FORMAT_TIME;
-  GstFormat *query_type = &fmt;
-#else
-  GstFormat query_type = GST_FORMAT_TIME;
-#endif
-  if (!gst_element_query_duration(player_, query_type, track_duration)) {
-    Log_error("gstreamer", "Failed to get track duration.");
-    rc = -1;
-  }
-  if (!gst_element_query_position(player_, query_type, track_pos)) {
-    Log_error("gstreamer", "Failed to get track pos");
-    rc = -1;
-  }
-  // playbin2 does not allow to query while paused. Remember in case
-  // we're asked then (it actually returns something, but it is bogus).
-  last_known_time_.duration = *track_duration;
-  last_known_time_.position = *track_pos;
-  return rc;
-}
-
-static int output_gstreamer_get_volume(float *v) {
-  double volume;
-  g_object_get(player_, "volume", &volume, NULL);
-  Log_info("gstreamer", "Query volume fraction: %f", volume);
-  *v = volume;
-  return 0;
-}
-static int output_gstreamer_set_volume(float value) {
-  Log_info("gstreamer", "Set volume fraction to %f", value);
-  g_object_set(player_, "volume", (double)value, NULL);
-  return 0;
-}
-static int output_gstreamer_get_mute(int *m) {
-  gboolean val;
-  g_object_get(player_, "mute", &val, NULL);
-  *m = val;
-  return 0;
-}
-static int output_gstreamer_set_mute(int m) {
-  Log_info("gstreamer", "Set mute to %s", m ? "on" : "off");
-  g_object_set(player_, "mute", (gboolean)m, NULL);
-  return 0;
-}
-
 static void prepare_next_stream(GstElement *obj, gpointer userdata) {
   (void)obj;
-  (void)userdata;
+  
+  GstreamerOutput* output = (GstreamerOutput*) userdata;
 
-  Log_info("gstreamer", "about-to-finish cb: setting uri %s", gs_next_uri_);
-  free(gsuri_);
-  gsuri_ = gs_next_uri_;
-  gs_next_uri_ = NULL;
-  if (gsuri_ != NULL) {
-    g_object_set(G_OBJECT(player_), "uri", gsuri_, NULL);
-    if (play_trans_callback_) {
-      // TODO(hzeller): can we figure out when we _actually_
-      // start playing this ? there are probably a couple
-      // of seconds between now and actual start.
-      play_trans_callback_(PLAY_STARTED_NEXT_STREAM);
-    }
+  Log_info("gstreamer", "about-to-finish cb: setting uri %s", output->next_uri.c_str());
+  
+  output->uri = output->next_uri;
+
+  output->next_uri.clear();
+
+  if (output->uri.length() > 0)
+  {
+    g_object_set(G_OBJECT(output->player), "uri", ouptut->uri, NULL);
+    
+    // TODO Tucker callback
+    //if (play_trans_callback_) {
+    //  // TODO(hzeller): can we figure out when we _actually_
+    //  // start playing this ? there are probably a couple
+    //  // of seconds between now and actual start.
+    //  play_trans_callback_(PLAY_STARTED_NEXT_STREAM);
+    //}
   }
 }
 
