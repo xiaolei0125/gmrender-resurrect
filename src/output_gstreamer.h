@@ -50,7 +50,7 @@ class GstreamerOutput : public OutputModule
     result_t get_mute(bool* mute);
     result_t set_mute(bool mute);
 
-    void next_stream();
+    void next_stream(void);
 
   private:
     GstElement* player = nullptr;

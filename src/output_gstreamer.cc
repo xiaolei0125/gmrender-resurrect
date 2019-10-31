@@ -221,7 +221,7 @@ OutputModule::result_t GstreamerOutput::initalize(void)
   if (sink != NULL)
   {
     // Add the audio device if it exists
-    if (audio_device != NULL) {
+    if (audio_device != NULL)
       g_object_set(G_OBJECT(sink), "device", audio_device, NULL);
 
     g_object_set(G_OBJECT(this->player), "audio-sink", sink, NULL);
@@ -241,17 +241,19 @@ OutputModule::result_t GstreamerOutput::initalize(void)
   if (gst_element_set_state(this->player, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE) 
     Log_error("gstreamer", "Error: pipeline doesn't become ready.");
 
-  g_signal_connect(G_OBJECT(this->players), "about-to-finish", G_CALLBACK([](GstElement* o, gpointer d) =>
+  // Typedef a function pointer of the about-to-finish callback
+  typedef void (*CallbackType)(GstElement*, gpointer);
+  g_signal_connect(G_OBJECT(this->player), "about-to-finish", G_CALLBACK((CallbackType) [](GstElement* o, gpointer d) -> void
   {  
-    ((GstreamerOutput*) d)->next_stream();;
+    ((GstreamerOutput*) d)->next_stream();
   }), this);
   
-  output_gstreamer_set_mute(0);
+  this->set_mute(false);
 
   if (initial_db < 0)
-    output_gstreamer_set_volume(exp(initial_db / 20 * log(10)));
+    this->set_volume(exp(initial_db / 20 * log(10)));
 
-  return 0;
+  return OutputModule::Success;
 }
 
 
@@ -291,7 +293,7 @@ void GstreamerOutput::next_stream(void)
   @param  none
   @retval GstState
 */
-void GstreamerOutput::get_player_state(void)
+GstState GstreamerOutput::get_player_state(void)
 {
   GstState state = GST_STATE_PLAYING; // TODO Tucker, default to playing?
   gst_element_get_state(this->player, &state, NULL, 0);
@@ -341,7 +343,7 @@ OutputModule::result_t GstreamerOutput::play(void)
   // TODO Tucker callbacks
   //play_trans_callback_ = callback;
 
-  if (get_current_player_state() != GST_STATE_PAUSED) 
+  if (this->get_player_state() != GST_STATE_PAUSED) 
   {
     if (gst_element_set_state(this->player, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE) 
       Log_error("gstreamer", "setting play state failed (1)"); // Error, but continue; can't get worse :)
@@ -352,7 +354,7 @@ OutputModule::result_t GstreamerOutput::play(void)
   if (gst_element_set_state(this->player, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) 
   {
     Log_error("gstreamer", "setting play state failed (2)");
-    return OutputModule::Error
+    return OutputModule::Error;
   }
 
   return OutputModule::Success;
@@ -423,13 +425,13 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
 #endif
 
   OutputModule::result_t result = OutputModule::Success;
-  if (!gst_element_query_duration(this->player, query_type, (gint64*) &position->duration_ns))
+  if (!gst_element_query_duration(this->player, query_type, (gint64*) &track->duration_ns))
   {
     Log_error("gstreamer", "Failed to get track duration.");
     result = OutputModule::Error;
   }
   
-  if (!gst_element_query_position(this->player, query_type, (gint64*) &position->position_ns)) 
+  if (!gst_element_query_position(this->player, query_type, (gint64*) &track->position_ns)) 
   {
     Log_error("gstreamer", "Failed to get track pos");
     result = OutputModule::Error;
@@ -459,7 +461,7 @@ OutputModule::result_t GstreamerOutput::get_volume(float* volume)
 
   Log_info("gstreamer", "Query volume fraction: %f", vol);
 
-  result OutputModule::Success;
+  return OutputModule::Success;
 }
 
 /**
@@ -468,13 +470,13 @@ OutputModule::result_t GstreamerOutput::get_volume(float* volume)
   @param  volume Desired volume (0.0 - 1.0)
   @retval result_t
 */
-OutputModule::result_t GstreamerOutput::set_volume(float* volume)
+OutputModule::result_t GstreamerOutput::set_volume(float volume)
 {
-  Log_info("gstreamer", "Set volume fraction to %f", value);
+  Log_info("gstreamer", "Set volume fraction to %f", volume);
   
   g_object_set(this->player, "volume", (double) volume, NULL);
 
-  result OutputModule::Success;
+  return OutputModule::Success;
 }
 
 /**
@@ -490,7 +492,7 @@ OutputModule::result_t GstreamerOutput::get_mute(bool* mute)
 
   *mute = (bool) val;
 
-  result OutputModule::Success;
+  return OutputModule::Success;
 }
 
 /**
@@ -503,7 +505,7 @@ OutputModule::result_t GstreamerOutput::set_mute(bool mute)
 {
   g_object_set(this->player, "mute", (gboolean) mute, NULL);
 
-  result OutputModule::Success;
+  return OutputModule::Success;
 }
 
 // This is crazy. I want C++ :)
@@ -683,115 +685,6 @@ static int output_gstreamer_add_options(GOptionContext *ctx) {
   g_option_context_add_group(ctx, option_group);
 
   g_option_context_add_group(ctx, gst_init_get_option_group());
-  return 0;
-}
-
-static void prepare_next_stream(GstElement *obj, gpointer userdata) {
-  (void)obj;
-  
-  GstreamerOutput* output = (GstreamerOutput*) userdata;
-
-  Log_info("gstreamer", "about-to-finish cb: setting uri %s", output->next_uri.c_str());
-  
-  output->uri = output->next_uri;
-
-  output->next_uri.clear();
-
-  if (output->uri.length() > 0)
-  {
-    g_object_set(G_OBJECT(output->player), "uri", ouptut->uri, NULL);
-    
-    // TODO Tucker callback
-    //if (play_trans_callback_) {
-    //  // TODO(hzeller): can we figure out when we _actually_
-    //  // start playing this ? there are probably a couple
-    //  // of seconds between now and actual start.
-    //  play_trans_callback_(PLAY_STARTED_NEXT_STREAM);
-    //}
-  }
-}
-
-static int output_gstreamer_init(void) {
-  GstBus *bus;
-
-  SongMetaData_init(&song_meta_);
-  scan_mime_list();
-
-#if (GST_VERSION_MAJOR < 1)
-  const char player_element_name[] = "playbin2";
-#else
-  const char player_element_name[] = "playbin";
-#endif
-
-  player_ = gst_element_factory_make(player_element_name, "play");
-  assert(player_ != NULL);
-
-  /* set buffer size */
-  if (buffer_duration > 0) {
-    gint64 buffer_duration_ns = round(buffer_duration * 1.0e9);
-    Log_info("gstreamer", "Setting buffer duration to %ldms",
-             buffer_duration_ns / 1000000);
-    g_object_set(G_OBJECT(player_), "buffer-duration", buffer_duration_ns,
-                 NULL);
-  } else {
-    Log_info("gstreamer", "Buffering disabled (--gstout-buffer-duration)");
-  }
-
-  bus = gst_pipeline_get_bus(GST_PIPELINE(player_));
-  gst_bus_add_watch(bus, my_bus_callback, NULL);
-  gst_object_unref(bus);
-
-  if (audio_sink != NULL && audio_pipe != NULL) {
-    Log_error(
-        "gstreamer",
-        "--gstout-audosink and --gstout-audiopipe are mutually exclusive.");
-    return 1;
-  }
-
-  if (audio_sink != NULL) {
-    GstElement *sink = NULL;
-    Log_info("gstreamer", "Setting audio sink to %s; device=%s\n", audio_sink,
-             audio_device ? audio_device : "");
-    sink = gst_element_factory_make(audio_sink, "sink");
-    if (sink == NULL) {
-      Log_error("gstreamer", "Couldn't create sink '%s'", audio_sink);
-    } else {
-      if (audio_device != NULL) {
-        g_object_set(G_OBJECT(sink), "device", audio_device, NULL);
-      }
-      g_object_set(G_OBJECT(player_), "audio-sink", sink, NULL);
-    }
-  }
-  if (audio_pipe != NULL) {
-    GstElement *sink = NULL;
-    Log_info("gstreamer", "Setting audio sink-pipeline to %s\n", audio_pipe);
-    sink = gst_parse_bin_from_description(audio_pipe, TRUE, NULL);
-
-    if (sink == NULL) {
-      Log_error("gstreamer", "Could not create pipeline.");
-    } else {
-      g_object_set(G_OBJECT(player_), "audio-sink", sink, NULL);
-    }
-  }
-  if (videosink != NULL) {
-    GstElement *sink = NULL;
-    Log_info("gstreamer", "Setting video sink to %s", videosink);
-    sink = gst_element_factory_make(videosink, "sink");
-    g_object_set(G_OBJECT(player_), "video-sink", sink, NULL);
-  }
-
-  if (gst_element_set_state(player_, GST_STATE_READY) ==
-      GST_STATE_CHANGE_FAILURE) {
-    Log_error("gstreamer", "Error: pipeline doesn't become ready.");
-  }
-
-  g_signal_connect(G_OBJECT(player_), "about-to-finish",
-                   G_CALLBACK(prepare_next_stream), NULL);
-  output_gstreamer_set_mute(0);
-  if (initial_db < 0) {
-    output_gstreamer_set_volume(exp(initial_db / 20 * log(10)));
-  }
-
   return 0;
 }
 
