@@ -25,6 +25,38 @@
 #ifndef _OUTPUT_GSTREAMER_H
 #define _OUTPUT_GSTREAMER_H
 
+#include "output_module.h"
+
+class GstreamerOutput : public OutputModule
+{
+  public:
+    GstreamerOutput() : OutputModule() {}
+    
+    void set_uri(const std::string &uri);
+    void set_next_uri(const std::string &uri);
+
+    result_t play(void);
+    result_t stop(void);
+    result_t pause(void);
+    result_t seek(int64_t position_ns);
+
+    result_t get_position(track_position_t* position);
+    result_t get_volume(float* volume);
+    result_t set_volume(float volume);
+    result_t get_mute(bool* mute);
+    result_t set_mute(bool mute);
+
+    void next_stream();
+
+  private:
+    GstElement* player = nullptr;
+
+    std::string uri;
+    std::string next_uri;
+
+    GstState get_player_state(void);
+};
+
 extern struct output_module gstreamer_output;
 
 #endif /*  _OUTPUT_GSTREAMER_H */
