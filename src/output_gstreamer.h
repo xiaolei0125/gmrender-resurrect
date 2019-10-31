@@ -25,6 +25,8 @@
 #ifndef _OUTPUT_GSTREAMER_H
 #define _OUTPUT_GSTREAMER_H
 
+#include <gst/gst.h>
+
 #include "output_module.h"
 
 class GstreamerOutput : public OutputModule
@@ -32,6 +34,8 @@ class GstreamerOutput : public OutputModule
   public:
     GstreamerOutput() : OutputModule() {}
     
+    result_t initalize(void);
+
     void set_uri(const std::string &uri);
     void set_next_uri(const std::string &uri);
 
@@ -40,7 +44,7 @@ class GstreamerOutput : public OutputModule
     result_t pause(void);
     result_t seek(int64_t position_ns);
 
-    result_t get_position(track_position_t* position);
+    result_t get_position(track_state_t* position);
     result_t get_volume(float* volume);
     result_t set_volume(float volume);
     result_t get_mute(bool* mute);

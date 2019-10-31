@@ -32,7 +32,7 @@
 class OutputModule
 {
   public:
-    typedef struct track_state_t {int64_t duration_ns, int64_t position_ns} track_state_t;
+    typedef struct track_state_t {int64_t duration_ns; int64_t position_ns;} track_state_t;
   
     const std::string shortname;
     const std::string description;
