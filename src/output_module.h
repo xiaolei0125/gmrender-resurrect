@@ -25,7 +25,42 @@
 #ifndef _OUTPUT_MODULE_H
 #define _OUTPUT_MODULE_H
 
+#include <string>
+
 #include "output.h"
+
+class OutputModule
+{
+  public:
+    typedef struct track_state_t {int64_t duration_ns, int64_t position_ns} track_state_t;
+  
+    const std::string shortname;
+    const std::string description;
+
+    typedef enum result_t
+    {
+      Success = 0,
+      Error = -1
+    } result_t;
+
+    virtual result_t initalize(void) = 0;
+
+    virtual void set_uri(const std::string &uri) = 0;
+    virtual void set_next_uri(const std::string &uri) = 0;
+
+    virtual result_t play(void) = 0;
+    virtual result_t stop(void) = 0;
+    virtual result_t pause(void) = 0;
+    virtual result_t seek(int64_t position_ns) = 0;
+
+    virtual result_t get_position(track_state_t* position) = 0;
+    virtual result_t get_volume(float* volume) = 0;
+    virtual result_t set_volume(float volume) = 0;
+    virtual result_t get_mute(bool* mute) = 0;
+    virtual result_t set_mute(bool mute) = 0;
+
+};
+
 
 struct output_module {
   const char *shortname;
