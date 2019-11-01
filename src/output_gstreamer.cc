@@ -2,6 +2,7 @@
 /* output_gstreamer.c - Output module for GStreamer
  *
  * Copyright (C) 2005-2007   Ivo Clarysse
+ * Copyright (C) 2019        Tucker Kern
  *
  * Adapted to gstreamer-0.10 2006 David Siorpaes
  * Adapted to output to snapcast 2017 Daniel Jäcksch
@@ -42,7 +43,6 @@
 #include "output_module.h"
 #include "upnp_connmgr.h"
 
-static double buffer_duration = 0.0; /* Buffer disbled by default, see #182 */
 
 static void scan_caps(const GstCaps *caps) {
   guint i;
@@ -135,25 +135,6 @@ static void scan_mime_list(void) {
         }
       }
 
-      features = g_list_next(features);
-    }
-  }
-}
-
-static GstElement *player_ = NULL;
-static char *gsuri_ = NULL;        // locally strdup()ed
-static char *gs_next_uri_ = NULL;  // locally strdup()ed
-static struct SongMetaData song_meta_;
-
-static output_transition_cb_t play_trans_callback_ = NULL;
-static output_update_meta_cb_t meta_update_callback_ = NULL;
-
-struct track_time_info {
-  gint64 duration;
-  gint64 position;
-};
-static struct track_time_info last_known_time_ = {0, 0};
-
 
 /**
   @brief  Initialize the output module
@@ -167,8 +148,7 @@ OutputModule::result_t GstreamerOutput::initalize(void)
   //SongMetaData_init(&song_meta_);
   //scan_mime_list();
 
-  // TODO Tucker feed in as arguments, constructor?
-  if (audio_sink != NULL && audio_pipe != NULL) 
+  if (this->options.audio_sink != NULL && this->options.audio_pipe != NULL) 
   {
     Log_error("gstreamer", "--gstout-audosink and --gstout-audiopipe are mutually exclusive.");
     return OutputModule::Error;
@@ -182,12 +162,12 @@ OutputModule::result_t GstreamerOutput::initalize(void)
 
   this->player = gst_element_factory_make(player_element_name, "play");
   if (this->player == NULL)
-    return OutputModule::Error; // TODO Tucker assert?
+    return OutputModule::Error;
 
   // Configure buffering if enabled
-  if (buffer_duration > 0) 
+  if (this->options.buffer_duration > 0) 
   {
-    int64_t buffer_duration_ns = round(buffer_duration * 1.0e9);
+    int64_t buffer_duration_ns = round(this->options.buffer_duration * 1.0e9);
     Log_info("gstreamer", "Setting buffer duration to %ldms", buffer_duration_ns / 1000000);
     g_object_set(G_OBJECT(this->player), "buffer-duration", (gint64) buffer_duration_ns, NULL);
   } 
@@ -197,23 +177,28 @@ OutputModule::result_t GstreamerOutput::initalize(void)
   }
 
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(this->player));
-  gst_bus_add_watch(bus, my_bus_callback, NULL); // TODO Tucker rename callback for bus
+  
+  gst_bus_add_watch(bus, [](GstBus* b, GstMessage* m, gpointer d) -> gboolean
+  {
+    return ((GstreamerOutput*) d)->bus_callback(m);
+  }, this);
+
   gst_object_unref(bus);
 
   GstElement* sink = NULL;
-  if (audio_sink)
+  if (this->options.audio_sink)
   {
-    Log_info("gstreamer", "Setting audio sink to %s; device=%s\n", audio_sink, audio_device ? audio_device : "");
+    Log_info("gstreamer", "Setting audio sink to %s; device=%s\n", this->options.audio_sink, this->options.audio_device ? this->options.audio_device : "");
    
-    sink = gst_element_factory_make(audio_sink, "sink");
+    sink = gst_element_factory_make(this->options.audio_sink, "sink");
     if (sink == NULL)
-      Log_error("gstreamer", "Couldn't create sink '%s'", audio_sink);
+      Log_error("gstreamer", "Couldn't create sink '%s'", this->options.audio_sink);
   }
-  else if (audio_pipe) 
+  else if (this->options.audio_pipe) 
   {
-    Log_info("gstreamer", "Setting audio sink-pipeline to %s\n", audio_pipe);
+    Log_info("gstreamer", "Setting audio sink-pipeline to %s\n", this->options.audio_pipe);
    
-    sink = gst_parse_bin_from_description(audio_pipe, TRUE, NULL);
+    sink = gst_parse_bin_from_description(this->options.audio_pipe, TRUE, NULL);
     if (sink == NULL)
       Log_error("gstreamer", "Could not create pipeline.");
   }
@@ -221,19 +206,19 @@ OutputModule::result_t GstreamerOutput::initalize(void)
   if (sink != NULL)
   {
     // Add the audio device if it exists
-    if (audio_device != NULL)
-      g_object_set(G_OBJECT(sink), "device", audio_device, NULL);
+    if (this->options.audio_device != NULL)
+      g_object_set(G_OBJECT(sink), "device", this->options.audio_device, NULL);
 
     g_object_set(G_OBJECT(this->player), "audio-sink", sink, NULL);
   }
 
-  if (videosink != NULL)
+  if (this->options.video_sink != NULL)
   {
-    Log_info("gstreamer", "Setting video sink to %s", videosink);
+    Log_info("gstreamer", "Setting video sink to %s", this->options.video_sink);
 
-    GstElement* vsink = gst_element_factory_make(videosink, "sink");
+    GstElement* vsink = gst_element_factory_make(this->options.video_sink, "sink");
     if (vsink == NULL)
-      Log_error("gstreamer", "Couldn't create sink '%s'", videosink);
+      Log_error("gstreamer", "Couldn't create sink '%s'", this->options.video_sink);
     else
       g_object_set(G_OBJECT(this->player), "video-sink", vsink, NULL);
   }
@@ -250,55 +235,53 @@ OutputModule::result_t GstreamerOutput::initalize(void)
   
   this->set_mute(false);
 
-  if (initial_db < 0)
-    this->set_volume(exp(initial_db / 20 * log(10)));
+  if (this->options.initial_db < 0)
+    this->set_volume(exp(this->options.initial_db / 20 * log(10)));
 
   return OutputModule::Success;
 }
 
-
 /**
-  @brief  Sets the next stream for playback. Triggered by the "about-to-finish" signal
+  @brief  Return the command line options assocaited with the output module
 
-  @param  none
-  @retval void
+  @param  void
+  @retval std::vector<GOptionGroup*>
 */
-void GstreamerOutput::next_stream(void)
+std::vector<GOptionGroup*> GstreamerOutput::get_options()
 {
-  Log_info("gstreamer", "about-to-finish cb: setting uri %s", this->next_uri.c_str());
+  std::vector<GOptionGroup*> optionGroups;
 
-  // Swap contents of next URI into current URI
-  this->uri.swap(this->next_uri);
+  GOptionGroup* option_group = g_option_group_new("gstout", "GStreamer Output Options",
+                                                  "Show GStreamer Output Options", NULL, NULL);
 
-  // Cear next URI so we don't repeat
-  this->next_uri.clear();
-
-  if (this->uri.length() > 0)
+  GOptionEntry option_entries[] = 
   {
-    g_object_set(G_OBJECT(this->player), "uri", this->uri.c_str(), NULL);
+    {"gstout-audiosink", 0, 0, G_OPTION_ARG_STRING, &this->options.audio_sink,
+     "GStreamer audio sink to use (autoaudiosink, alsasink, osssink, esdsink, ...)", NULL},
 
-    // TODO Tucker callback
-    //if (play_trans_callback_) {
-    //  // TODO(hzeller): can we figure out when we _actually_
-    //  // start playing this ? there are probably a couple
-    //  // of seconds between now and actual start.
-    //  play_trans_callback_(PLAY_STARTED_NEXT_STREAM);
-    //}
-  }
-}
+    {"gstout-audiodevice", 0, 0, G_OPTION_ARG_STRING, &this->options.audio_device, 
+     "GStreamer device for the given audiosink. ", NULL},
 
-/**
-  @brief  Get the current state of the Gstreamer player
+    {"gstout-audiopipe", 0, 0, G_OPTION_ARG_STRING, &this->options.audio_pipe,
+     "GStreamer audio sink to pipeline (gst-launch format) useful for further output format conversion.", NULL},
 
-  @param  none
-  @retval GstState
-*/
-GstState GstreamerOutput::get_player_state(void)
-{
-  GstState state = GST_STATE_PLAYING; // TODO Tucker, default to playing?
-  gst_element_get_state(this->player, &state, NULL, 0);
+    {"gstout-videosink", 0, 0, G_OPTION_ARG_STRING, &this->options.video_sink,
+     "GStreamer video sink to use (autovideosink, xvimagesink, ximagesink, ...)", NULL},
   
-  return state;
+    {"gstout-buffer-duration", 0, 0, G_OPTION_ARG_DOUBLE, &this->options.buffer_duration,
+     "The size of the buffer in seconds. Set to zero to disable buffering.", NULL},
+
+    {"gstout-initial-volume-db", 0, 0, G_OPTION_ARG_DOUBLE, &this->options.initial_db,
+     "GStreamer initial volume in decibel (e.g. 0.0 = max; -6 = 1/2 max) ", NULL},
+    {NULL}
+    };
+
+  g_option_group_add_entries(option_group, option_entries);
+
+  optionGroups.push_back(option_group);
+  optionGroups.push_back(gst_init_get_option_group());
+
+  return optionGroups;
 }
 
 /**
@@ -508,184 +491,181 @@ OutputModule::result_t GstreamerOutput::set_mute(bool mute)
   return OutputModule::Success;
 }
 
-// This is crazy. I want C++ :)
-struct MetaModify {
-  struct SongMetaData *meta;
-  int any_change;
-};
+/**
+  @brief  Get the current state of the Gstreamer player
 
-static void MetaModify_add_tag(const GstTagList *list, const gchar *tag,
-                               gpointer user_data) {
-  struct MetaModify *data = (struct MetaModify *)user_data;
-  const char **destination = NULL;
-  if (strcmp(tag, GST_TAG_TITLE) == 0) {
-    destination = &data->meta->title;
-  } else if (strcmp(tag, GST_TAG_ARTIST) == 0) {
-    destination = &data->meta->artist;
-  } else if (strcmp(tag, GST_TAG_ALBUM) == 0) {
-    destination = &data->meta->album;
-  } else if (strcmp(tag, GST_TAG_GENRE) == 0) {
-    destination = &data->meta->genre;
-  } else if (strcmp(tag, GST_TAG_COMPOSER) == 0) {
-    destination = &data->meta->composer;
+  @param  none
+  @retval GstState
+*/
+GstState GstreamerOutput::get_player_state(void)
+{
+  GstState state = GST_STATE_PLAYING; // TODO Tucker, default to playing?
+  gst_element_get_state(this->player, &state, NULL, 0);
+  
+  return state;
   }
-  if (destination != NULL) {
-    char *replace = NULL;
-    gst_tag_list_get_string(list, tag, &replace);
-    if (replace != NULL &&
-        (*destination == NULL || strcmp(replace, *destination) != 0)) {
-      free((char *)*destination);
-      *destination = replace;
-      data->any_change++;
-    } else {
-      free(replace);
+
+/**
+  @brief  Sets the next stream for playback. Triggered by the "about-to-finish" signal
+
+  @param  none
+  @retval void
+*/
+void GstreamerOutput::next_stream(void)
+{
+  Log_info("gstreamer", "about-to-finish cb: setting uri %s", this->next_uri.c_str());
+
+  // Swap contents of next URI into current URI
+  this->uri.swap(this->next_uri);
+
+  // Cear next URI so we don't repeat
+  this->next_uri.clear();
+
+  if (this->uri.length() > 0)
+  {
+    g_object_set(G_OBJECT(this->player), "uri", this->uri.c_str(), NULL);
+
+    // TODO(hzeller): can we figure out when we _actually_ start playing this? 
+    // There are probably a couple of seconds between now and actual start.
+    //TODO Tucker Notify via callback
     }
   }
-}
 
-static gboolean my_bus_callback(GstBus *bus, GstMessage *msg, gpointer data) {
-  (void)bus;
-  (void)data;
+/**
+  @brief  Handle message from the Gstreamer bus
 
-  GstMessageType msgType;
-  const GstObject *msgSrc;
-  const gchar *msgSrcName;
-
-  msgType = GST_MESSAGE_TYPE(msg);
-  msgSrc = GST_MESSAGE_SRC(msg);
-  msgSrcName = GST_OBJECT_NAME(msgSrc);
-
-  switch (msgType) {
+  @param  message GstMessage to process
+  @retval bool - Message handled
+*/
+bool GstreamerOutput::bus_callback(GstMessage* message)
+{
+  switch (message->type) 
+  {
     case GST_MESSAGE_EOS:
-      Log_info("gstreamer", "%s: End-of-stream", msgSrcName);
-      if (gs_next_uri_ != NULL) {
-        // If playbin does not support gapless (old
-        // versions didn't), this will trigger.
-        free(gsuri_);
-        gsuri_ = gs_next_uri_;
-        gs_next_uri_ = NULL;
-        gst_element_set_state(player_, GST_STATE_READY);
-        g_object_set(G_OBJECT(player_), "uri", gsuri_, NULL);
-        gst_element_set_state(player_, GST_STATE_PLAYING);
-        if (play_trans_callback_) {
-          play_trans_callback_(PLAY_STARTED_NEXT_STREAM);
-        }
-      } else if (play_trans_callback_) {
-        play_trans_callback_(PLAY_STOPPED);
+    {
+      Log_info("gstreamer", "%s: End-of-stream", message->src->name);
+
+      if (this->next_uri.length() > 0)
+      {
+        // If playbin does not support gapless (old versions didn't), this will trigger.
+        
+        // Swap contents of next URI into current URI
+        this->uri.swap(this->next_uri);
+
+        // Cear next URI so we don't repeat
+        this->next_uri.clear();
+
+        gst_element_set_state(this->player, GST_STATE_READY);
+
+        g_object_set(G_OBJECT(this->player), "uri", this->uri.c_str(), NULL);
+
+        gst_element_set_state(this->player, GST_STATE_PLAYING);
+
+        //TODO Tucker Notify via callback
       }
+      //else
+        //TODO Tucker Notify via callback
+
       break;
+    }
 
-    case GST_MESSAGE_ERROR: {
-      gchar *debug;
-      GError *err;
+    case GST_MESSAGE_ERROR: 
+    {
+      GError* err = NULL;
+      gchar* debug = NULL;
+      gst_message_parse_error(message, &err, &debug);
 
-      gst_message_parse_error(msg, &err, &debug);
+      Log_error("gstreamer", "%s: Error: %s (Debug: %s)", message->src->name, err->message, debug);
 
-      Log_error("gstreamer", "%s: Error: %s (Debug: %s)", msgSrcName,
-                err->message, debug);
       g_error_free(err);
       g_free(debug);
 
       break;
     }
-    case GST_MESSAGE_STATE_CHANGED: {
+
+    case GST_MESSAGE_STATE_CHANGED: 
+    {
+#ifdef DEBUG_STATE_CHANGE
       GstState oldstate, newstate, pending;
-      gst_message_parse_state_changed(msg, &oldstate, &newstate, &pending);
-      /*
-      g_print("GStreamer: %s: State change: '%s' -> '%s', "
-              "PENDING: '%s'\n", msgSrcName,
+      gst_message_parse_state_changed(message, &oldstate, &newstate, &pending);
+
+      Log_info("gstreamer", "Source: %s: State change: '%s' -> '%s', "
+              "PENDING: '%s'\n", message->src->name,
               gststate_get_name(oldstate),
               gststate_get_name(newstate),
               gststate_get_name(pending));
-      */
+#endif
       break;
     }
 
-    case GST_MESSAGE_TAG: {
-      GstTagList *tags = NULL;
+    case GST_MESSAGE_TAG:
+    {
+      // Nothing to do
+      if (this->metadata_callback == NULL)
+        break;
+     
+      GstTagList* tag_list = NULL;
+      gst_message_parse_tag(message, &tag_list);
 
-      if (meta_update_callback_ != NULL) {
-        gst_message_parse_tag(msg, &tags);
-        /*g_print("GStreamer: Got tags from element %s\n",
-                GST_OBJECT_NAME (msg->src));
-        */
-        struct MetaModify modify;
-        modify.meta = &song_meta_;
-        modify.any_change = 0;
-        gst_tag_list_foreach(tags, &MetaModify_add_tag, &modify);
-        gst_tag_list_free(tags);
-        if (modify.any_change) {
-          meta_update_callback_(&song_meta_);
-        }
-      }
+      auto attemptTagUpdate = [tag_list](std::string& tag, const char* tag_name) -> bool
+      {
+        // Attempt to fetch the tag
+        gchar* value = NULL;
+        if (gst_tag_list_get_string(tag_list, tag_name, &value))
+          Log_info("gstreamer", "Got tag (%s) value (%s)", tag_name, value);
+
+        // Copy into a string
+        std::string new_tag(value);
+        
+        // Free the tag buffer
+        g_free(&value);
+
+        if (tag.compare(new_tag) == 0)
+          return false; // Identical tags
+        
+        tag.swap(new_tag);
+        
+        return true;
+      };
+
+      bool notify = false;
+
+      notify |= attemptTagUpdate(this->metadata.title, GST_TAG_TITLE);
+      notify |= attemptTagUpdate(this->metadata.artist, GST_TAG_ARTIST);
+      notify |= attemptTagUpdate(this->metadata.album, GST_TAG_ALBUM);
+      notify |= attemptTagUpdate(this->metadata.genre, GST_TAG_GENRE);
+      notify |= attemptTagUpdate(this->metadata.composer, GST_TAG_COMPOSER);
+      
+      if (notify)
+        this->notify_metadata_change(this->metadata);
+
+      gst_tag_list_free(tag_list);
+
       break;
     }
 
-    case GST_MESSAGE_BUFFERING: {
-      if (buffer_duration <= 0.0) break; /* nothing to buffer */
+    case GST_MESSAGE_BUFFERING: 
+    {
+      if (this->options.buffer_duration <= 0.0) 
+        break; // Buffering disabled
 
       gint percent = 0;
-      gst_message_parse_buffering(msg, &percent);
+      gst_message_parse_buffering(message, &percent);
 
       /* Pause playback until buffering is complete. */
       if (percent < 100)
-        gst_element_set_state(player_, GST_STATE_PAUSED);
+        gst_element_set_state(this->player, GST_STATE_PAUSED);
       else
-        gst_element_set_state(player_, GST_STATE_PLAYING);
+        gst_element_set_state(this->player, GST_STATE_PLAYING);
+
       break;
     }
+    
     default:
-      /*
-      g_print("GStreamer: %s: unhandled message type %d (%s)\n",
-              msgSrcName, msgType, gst_message_type_get_name(msgType));
-      */
       break;
   }
 
-  return TRUE;
-}
-
-static gchar *audio_sink = NULL;
-static gchar *audio_device = NULL;
-static gchar *audio_pipe = NULL;
-static gchar *videosink = NULL;
-static double initial_db = 0.0;
-
-/* Options specific to output_gstreamer */
-static GOptionEntry option_entries[] = {
-    {"gstout-audiosink", 0, 0, G_OPTION_ARG_STRING, &audio_sink,
-     "GStreamer audio sink to use "
-     "(autoaudiosink, alsasink, osssink, esdsink, ...)",
-     NULL},
-    {"gstout-audiodevice", 0, 0, G_OPTION_ARG_STRING, &audio_device,
-     "GStreamer device for the given audiosink. ", NULL},
-    {"gstout-audiopipe", 0, 0, G_OPTION_ARG_STRING, &audio_pipe,
-     "GStreamer audio sink to pipeline"
-     "(gst-launch format) useful for further output format conversion.",
-     NULL},
-    {"gstout-videosink", 0, 0, G_OPTION_ARG_STRING, &videosink,
-     "GStreamer video sink to use "
-     "(autovideosink, xvimagesink, ximagesink, ...)",
-     NULL},
-    {"gstout-buffer-duration", 0, 0, G_OPTION_ARG_DOUBLE, &buffer_duration,
-     "The size of the buffer in seconds. Set to zero to disable buffering.",
-     NULL},
-    {"gstout-initial-volume-db", 0, 0, G_OPTION_ARG_DOUBLE, &initial_db,
-     "GStreamer initial volume in decibel (e.g. 0.0 = max; -6 = 1/2 max) ",
-     NULL},
-    {NULL}};
-
-static int output_gstreamer_add_options(GOptionContext *ctx) {
-  GOptionGroup *option_group;
-  option_group =
-      g_option_group_new("gstout", "GStreamer Output Options",
-                         "Show GStreamer Output Options", NULL, NULL);
-  g_option_group_add_entries(option_group, option_entries);
-
-  g_option_context_add_group(ctx, option_group);
-
-  g_option_context_add_group(ctx, gst_init_get_option_group());
-  return 0;
+  return true;
 }
 
 struct output_module gstreamer_output = {

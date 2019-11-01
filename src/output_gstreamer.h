@@ -32,10 +32,11 @@
 class GstreamerOutput : public OutputModule
 {
   public:
-    GstreamerOutput() : OutputModule() {}
+    GstreamerOutput() : OutputModule("gst", "GStreamer multimedia framework") {}
     
     result_t initalize(void);
 
+    std::vector<GOptionGroup*> get_options(void);
     void set_uri(const std::string &uri);
     void set_next_uri(const std::string &uri);
 
@@ -50,15 +51,25 @@ class GstreamerOutput : public OutputModule
     result_t get_mute(bool* mute);
     result_t set_mute(bool mute);
 
-    void next_stream(void);
-
   private:
     GstElement* player = nullptr;
 
     std::string uri;
     std::string next_uri;
 
+    struct options_t
+    {
+      char* audio_sink = nullptr;
+      char* audio_device = nullptr;
+      char* audio_pipe = nullptr;
+      char* video_sink = nullptr;
+      double initial_db = 0.0;
+      double buffer_duration = 0.0; // Buffer disbled by default, see #182
+    } options;
+
     GstState get_player_state(void);
+    void next_stream(void);
+    bool bus_callback(GstMessage* message);
 };
 
 extern struct output_module gstreamer_output;
