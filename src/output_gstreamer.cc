@@ -393,14 +393,14 @@ OutputModule::result_t GstreamerOutput::seek(int64_t position_ns)
 */
 OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
 {
-  // TODO Tucker
-  //*track_duration = last_known_time_.duration;
-  //*track_pos = last_known_time_.position;
+#if (GST_VERSION_MAJOR < 1)
+  static track_state_t last_state;
 
+  // playbin2 does not allow to query while paused, return last known state
+  *track = last_state;
   if (this->get_player_state() != GST_STATE_PLAYING)
     return OutputModule::Success;
     
-#if (GST_VERSION_MAJOR < 1)
   GstFormat fmt = GST_FORMAT_TIME;
   GstFormat* query_type = &fmt;
 #else
@@ -420,11 +420,10 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
     result = OutputModule::Error;
   }
   
-  // playbin2 does not allow to query while paused. Remember in case
-  // we're asked then (it actually returns something, but it is bogus).
-  // TODO Tucker
-  //last_known_time_.duration = *track_duration;
-  //last_known_time_.position = *track_pos;
+#if (GST_VERSION_MAJOR < 1)
+  // Update last known state
+  last_state = *track
+#endif
 
   return result;
 }
