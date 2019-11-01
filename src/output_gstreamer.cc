@@ -526,7 +526,7 @@ void GstreamerOutput::next_stream(void)
 
     // TODO(hzeller): can we figure out when we _actually_ start playing this? 
     // There are probably a couple of seconds between now and actual start.
-    //TODO Tucker Notify via callback
+    this->notify_playback_update(PLAY_STARTED_NEXT_STREAM);
     }
   }
 
@@ -560,10 +560,10 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
 
         gst_element_set_state(this->player, GST_STATE_PLAYING);
 
-        //TODO Tucker Notify via callback
+        this->notify_playback_update(PLAY_STARTED_NEXT_STREAM);
       }
-      //else
-        //TODO Tucker Notify via callback
+      else
+        this->notify_playback_update(PLAY_STOPPED);
 
       break;
     }
@@ -670,19 +670,4 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
 struct output_module gstreamer_output = {
     .shortname = "gst",
     .description = "GStreamer multimedia framework",
-    .add_options = output_gstreamer_add_options,
-
-    .init = output_gstreamer_init,
-    .set_uri = output_gstreamer_set_uri,
-    .set_next_uri = output_gstreamer_set_next_uri,
-    .play = output_gstreamer_play,
-    .stop = output_gstreamer_stop,
-    .pause = output_gstreamer_pause,
-    .seek = output_gstreamer_seek,
-
-    .get_position = output_gstreamer_get_position,
-    .get_volume = output_gstreamer_get_volume,
-    .set_volume = output_gstreamer_set_volume,
-    .get_mute = output_gstreamer_get_mute,
-    .set_mute = output_gstreamer_set_mute,
 };

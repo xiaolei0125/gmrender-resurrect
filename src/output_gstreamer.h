@@ -32,11 +32,12 @@
 class GstreamerOutput : public OutputModule
 {
   public:
-    GstreamerOutput() : OutputModule("gst", "GStreamer multimedia framework") {}
+    GstreamerOutput(output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr) : OutputModule("gst", "GStreamer multimedia framework", play, meta){}
     
     result_t initalize(void);
 
     std::vector<GOptionGroup*> get_options(void);
+
     void set_uri(const std::string &uri);
     void set_next_uri(const std::string &uri);
 

@@ -30,15 +30,15 @@
 
 // Feedback for the controlling part what is happening with the
 // output.
-enum PlayFeedback {
+typedef enum PlayFeedback {
   PLAY_STOPPED,
   PLAY_STARTED_NEXT_STREAM,
-};
+} PlayFeedback;
 typedef void (*output_transition_cb_t)(enum PlayFeedback);
 
 // In case the stream gets to know details about the song, this is a
 // callback with changes we send back to the controlling layer.
-typedef void (*output_update_meta_cb_t)(const struct SongMetaData *);
+typedef void (*output_update_meta_cb_t)(const track_metadata_t&);
 
 int output_init(const char *shortname);
 int output_add_options(GOptionContext *ctx);

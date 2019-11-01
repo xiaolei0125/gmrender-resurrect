@@ -44,11 +44,16 @@ class OutputModule
       Error = -1
     } result_t;
 
-    OutputModule(const char* name, const char* desc) : shortname(name), description(desc) {}
+    OutputModule(const char* name, const char* desc, output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr) : shortname(name), description(desc)
+    {
+      this->playback_callback = play;
+      this->metadata_callback = meta;
+    }
 
     virtual result_t initalize(void) = 0;
 
     virtual std::vector<GOptionGroup*> get_options(void) = 0;
+
     virtual void set_uri(const std::string &uri) = 0;
     virtual void set_next_uri(const std::string &uri) = 0;
 
@@ -63,6 +68,23 @@ class OutputModule
     virtual result_t get_mute(bool* mute) = 0;
     virtual result_t set_mute(bool mute) = 0;
 
+  protected:
+    track_metadata_t metadata;
+
+    output_transition_cb_t playback_callback = nullptr;
+    output_update_meta_cb_t metadata_callback = nullptr;
+
+    virtual void notify_playback_update(PlayFeedback feedback)
+    {
+      if (this->playback_callback)
+        this->playback_callback(feedback);
+    }
+
+    virtual void notify_metadata_change(const track_metadata_t& metadata)
+    {
+      if (this->metadata_callback)
+        this->metadata_callback(metadata);
+    }
 };
 
 
