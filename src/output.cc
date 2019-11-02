@@ -151,7 +151,7 @@ int output_add_options(GOptionContext *ctx) {
   return 0;
 }
 
-void output_set_uri(const char *uri, output_update_meta_cb_t meta_cb) {
+void output_set_uri(const char *uri) {
   if (output_module){
     output_module->set_uri(uri);
   }
@@ -162,7 +162,7 @@ void output_set_next_uri(const char *uri) {
   }
 }
 
-int output_play(output_transition_cb_t transition_callback) {
+int output_play() {
   if (output_module) {
     return output_module->play();
   }

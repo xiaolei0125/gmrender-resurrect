@@ -482,7 +482,7 @@ static int set_avtransport_uri(struct action_event *event) {
   service_lock();
   const char *meta = upnp_get_string(event, "CurrentURIMetaData");
   // Transport URI/Meta set now, current URI/Meta when it starts playing.
-  int requires_meta_update = replace_transport_uri_and_meta(uri, meta);
+  replace_transport_uri_and_meta(uri, meta);
 
   if (transport_state_ == TRANSPORT_PLAYING) {
     // Uh, wrong state.
@@ -493,7 +493,7 @@ static int set_avtransport_uri(struct action_event *event) {
     replace_current_uri_and_meta(uri, meta);
   }
 
-  output_set_uri(uri, (requires_meta_update ? update_meta_from_stream : NULL));
+  output_set_uri(uri);
   service_unlock();
 
   return 0;
@@ -712,7 +712,7 @@ static int play(struct action_event *event) {
       /* >>> fall through */
 
     case TRANSPORT_PAUSED_PLAYBACK:
-      if (output_play(&inform_play_transition_from_output)) {
+      if (output_play()) {
         upnp_set_error(event, 704, "Playing failed");
         rc = -1;
       } else {

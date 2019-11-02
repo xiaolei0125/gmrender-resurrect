@@ -46,10 +46,10 @@ void output_dump_modules(void);
 
 int output_loop(void);
 
-void output_set_uri(const char *uri, output_update_meta_cb_t meta_info);
+void output_set_uri(const char *uri);
 void output_set_next_uri(const char *uri);
 
-int output_play(output_transition_cb_t done_callback);
+int output_play(void);
 int output_stop(void);
 int output_pause(void);
 int output_get_position(gint64 *track_dur_nanos, gint64 *track_pos_nanos);
