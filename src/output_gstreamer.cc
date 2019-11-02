@@ -397,6 +397,10 @@ OutputModule::result_t GstreamerOutput::seek(int64_t position_ns)
 */
 OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
 {
+  // Can't query position yet
+  if (this->get_player_state() <= GST_STATE_READY)
+    return OutputModule::Error;
+
 #if (GST_VERSION_MAJOR < 1)
   static track_state_t last_state;
 
@@ -414,13 +418,13 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
   OutputModule::result_t result = OutputModule::Success;
   if (!gst_element_query_duration(this->player, query_type, (gint64*) &track->duration_ns))
   {
-    Log_error(TAG, "Failed to get track duration.");
+    Log_warn(TAG, "Failed to get track duration.");
     result = OutputModule::Error;
   }
   
   if (!gst_element_query_position(this->player, query_type, (gint64*) &track->position_ns)) 
   {
-    Log_error(TAG, "Failed to get track pos");
+    Log_warn(TAG, "Failed to get track position.");
     result = OutputModule::Error;
   }
   
