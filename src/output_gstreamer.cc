@@ -614,20 +614,22 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
       {
         // Attempt to fetch the tag
         gchar* value = NULL;
-        if (gst_tag_list_get_string(tag_list, tag_name, &value))
-          Log_info(TAG, "Got tag (%s) value (%s)", tag_name, value);
+        if (gst_tag_list_get_string(tag_list, tag_name, &value) == false)
+          return false;
 
         // Copy into a string
         std::string new_tag(value);
         
         // Free the tag buffer
-        g_free(&value);
+        g_free(value);
 
         if (tag.compare(new_tag) == 0)
           return false; // Identical tags
         
         tag.swap(new_tag);
         
+        Log_info(TAG, "Got tag (%s) value (%s)", tag_name, tag.c_str());
+
         return true;
       };
 
