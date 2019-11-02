@@ -27,6 +27,7 @@
 
 #include <string>
 #include <vector>
+#include <set>
 
 #include "output.h"
 
@@ -53,6 +54,7 @@ class OutputModule
     virtual result_t initalize(void) = 0;
 
     virtual std::vector<GOptionGroup*> get_options(void) = 0;
+    virtual std::set<std::string> get_supported_media(void) = 0;
 
     virtual void set_uri(const std::string &uri) = 0;
     virtual void set_next_uri(const std::string &uri) = 0;

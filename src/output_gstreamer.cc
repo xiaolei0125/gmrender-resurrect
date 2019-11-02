@@ -44,98 +44,6 @@
 #include "upnp_connmgr.h"
 
 
-static void scan_caps(const GstCaps *caps) {
-  guint i;
-
-  g_return_if_fail(caps != NULL);
-
-  if (gst_caps_is_any(caps)) {
-    return;
-  }
-  if (gst_caps_is_empty(caps)) {
-    return;
-  }
-
-  for (i = 0; i < gst_caps_get_size(caps); i++) {
-    GstStructure *structure = gst_caps_get_structure(caps, i);
-    const char *mime_type = gst_structure_get_name(structure);
-    register_mime_type(mime_type);
-  }
-  // There seem to be all kinds of mime types out there that start with
-  // "audio/" but are not explicitly supported by gstreamer. Let's just
-  // tell the controller that we can handle everything "audio/*" and hope
-  // for the best.
-  register_mime_type("audio/*");
-}
-
-static void scan_pad_templates_info(GstElement *element,
-                                    GstElementFactory *factory) {
-  (void)factory;
-
-  const GList *pads;
-  GstPadTemplate *padtemplate;
-  GstElementClass *element_class;
-
-  element_class = GST_ELEMENT_GET_CLASS(element);
-
-  if (!element_class->numpadtemplates) {
-    return;
-  }
-
-  pads = element_class->padtemplates;
-  while (pads) {
-    padtemplate = (GstPadTemplate *)(pads->data);
-    // GstPad *pad = (GstPad *) (pads->data);
-    pads = g_list_next(pads);
-
-    if ((padtemplate->direction == GST_PAD_SINK) &&
-        ((padtemplate->presence == GST_PAD_ALWAYS) ||
-         (padtemplate->presence == GST_PAD_SOMETIMES) ||
-         (padtemplate->presence == GST_PAD_REQUEST)) &&
-        (padtemplate->caps)) {
-      scan_caps(padtemplate->caps);
-    }
-  }
-}
-
-static void scan_mime_list(void) {
-  GstRegistry *registry = NULL;
-  GList *plugins = NULL;
-
-#if (GST_VERSION_MAJOR < 1)
-  registry = gst_registry_get_default();
-  plugins = gst_default_registry_get_plugin_list();
-#else
-  registry = gst_registry_get();
-  plugins = gst_registry_get_plugin_list(registry);
-#endif
-
-  while (plugins) {
-    GList *features;
-    GstPlugin *plugin;
-
-    plugin = (GstPlugin *)(plugins->data);
-    plugins = g_list_next(plugins);
-
-    features = gst_registry_get_feature_list_by_plugin(
-        registry, gst_plugin_get_name(plugin));
-
-    while (features) {
-      GstPluginFeature *feature;
-
-      feature = GST_PLUGIN_FEATURE(features->data);
-
-      if (GST_IS_ELEMENT_FACTORY(feature)) {
-        GstElementFactory *factory;
-        GstElement *element;
-        factory = GST_ELEMENT_FACTORY(feature);
-        element = gst_element_factory_create(factory, NULL);
-        if (element) {
-          scan_pad_templates_info(element, factory);
-        }
-      }
-
-
 /**
   @brief  Initialize the output module
 
@@ -282,6 +190,81 @@ std::vector<GOptionGroup*> GstreamerOutput::get_options()
   optionGroups.push_back(gst_init_get_option_group());
 
   return optionGroups;
+}
+
+
+/**
+  @brief  Get all the media types supported by this output
+
+  @param  none
+  @retval std::set<std::string>
+*/
+std::set<std::string> GstreamerOutput::get_supported_media(void)
+{
+  GstRegistry* registry = NULL;
+
+#if (GST_VERSION_MAJOR < 1)
+  registry = gst_registry_get_default();
+#else
+  registry = gst_registry_get();
+#endif
+
+  std::set<std::string> mime_types;
+
+  // Fetch a list of all element factories
+  const GList* features = gst_registry_get_feature_list(registry, GST_TYPE_ELEMENT_FACTORY);
+
+  while (features != NULL) 
+  {
+    GstPluginFeature* feature = GST_PLUGIN_FEATURE(features->data);
+    
+    // Advance list
+    features = g_list_next(features);
+
+    // Better be an element factory
+    assert(GST_IS_ELEMENT_FACTORY(feature));
+
+    GstElementFactory* factory = GST_ELEMENT_FACTORY(feature);
+
+    // Ignore elements without pads
+    if (gst_element_factory_get_num_pad_templates(factory) == 0)
+      continue;
+
+    // Fetch a list of all pads
+    const GList* pads = gst_element_factory_get_static_pad_templates(factory);
+
+    while (pads) 
+    {
+      GstStaticPadTemplate* padTemplate = (GstStaticPadTemplate*) pads->data;
+
+      // Advance list
+      pads = g_list_next(pads);
+      
+      // Skip pads that aren't sinks
+      if (padTemplate->direction != GST_PAD_SINK)
+        continue;
+
+      // This is literally all known pad presences so it should be OK!
+      assert(padTemplate->presence == GST_PAD_ALWAYS || padTemplate->presence == GST_PAD_SOMETIMES || padTemplate->presence == GST_PAD_REQUEST);
+
+      GstCaps* capabilities = gst_static_caps_get(&padTemplate->static_caps);
+
+      // Skip capabilities that they tell us nothing
+      if (capabilities == NULL || gst_caps_is_any(capabilities) || gst_caps_is_empty(capabilities))
+        continue;
+
+      for (guint i = 0; i < gst_caps_get_size(capabilities); i++) 
+      {
+        GstStructure* structure = gst_caps_get_structure(capabilities, i);
+
+        std::string mime_type = std::string(gst_structure_get_name(structure));
+
+        mime_types.insert(mime_type);
+      }
+    }
+  }
+  
+  return mime_types;
 }
 
 /**

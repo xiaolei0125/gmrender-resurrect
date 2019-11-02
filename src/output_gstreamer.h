@@ -37,6 +37,7 @@ class GstreamerOutput : public OutputModule
     result_t initalize(void);
 
     std::vector<GOptionGroup*> get_options(void);
+    std::set<std::string> get_supported_media(void);
 
     void set_uri(const std::string &uri);
     void set_next_uri(const std::string &uri);
