@@ -191,15 +191,18 @@ int output_seek(gint64 position_nanos) {
 }
 
 int output_get_position(gint64 *track_dur, gint64 *track_pos) {
-  if (output_module) {
+  if (output_module = NULL)
+    return -1; // TODO we should probably assert(output_module != NULL)
+
     OutputModule::track_state_t state;
-    if (output_module->get_position(&state))
+    if (output_module->get_position(&state) == OutputModule::Success)
     {
       *track_dur = state.duration_ns;
       *track_pos = state.position_ns;
+
+      return 0;
     }
 
-  }
   return -1;
 }
 
