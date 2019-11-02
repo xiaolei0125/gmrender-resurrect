@@ -53,9 +53,19 @@
 */
 OutputModule::result_t GstreamerOutput::initalize(void)
 {
-  // TODO Tucker
-  //SongMetaData_init(&song_meta_);
-  //scan_mime_list();
+  if (gst_is_initialized() == false)
+  {
+    Log_warn(TAG, "Initalizeing Gstreamer without options.");
+
+    GError* error = NULL;
+    if (gst_init_check(NULL, NULL, &error) == false)
+    {
+      Log_error(TAG, "Failed to initalize Gstreamer. Error: %s", error->message);
+      g_error_free(error);
+
+      return OutputModule::Error;
+    }
+  } 
 
   if (this->options.audio_sink != NULL && this->options.audio_pipe != NULL) 
   {
@@ -134,11 +144,11 @@ OutputModule::result_t GstreamerOutput::initalize(void)
 
   if (gst_element_set_state(this->player, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE) 
     Log_error(TAG, "Error: pipeline doesn't become ready.");
-
+  
   // Typedef a function pointer of the about-to-finish callback
   typedef void (*CallbackType)(GstElement*, gpointer);
   g_signal_connect(G_OBJECT(this->player), "about-to-finish", G_CALLBACK((CallbackType) [](GstElement* o, gpointer d) -> void
-  {  
+  {
     ((GstreamerOutput*) d)->next_stream();
   }), this);
   
@@ -384,7 +394,7 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
   *track = last_state;
   if (this->get_player_state() != GST_STATE_PLAYING)
     return OutputModule::Success;
-    
+
   GstFormat fmt = GST_FORMAT_TIME;
   GstFormat* query_type = &fmt;
 #else
@@ -408,7 +418,7 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
   // Update last known state
   last_state = *track
 #endif
-
+  
   return result;
 }
 
@@ -486,7 +496,7 @@ GstState GstreamerOutput::get_player_state(void)
   gst_element_get_state(this->player, &state, NULL, 0);
   
   return state;
-  }
+}
 
 /**
   @brief  Sets the next stream for playback. Triggered by the "about-to-finish" signal
@@ -511,8 +521,8 @@ void GstreamerOutput::next_stream(void)
     // TODO(hzeller): can we figure out when we _actually_ start playing this? 
     // There are probably a couple of seconds between now and actual start.
     this->notify_playback_update(PLAY_STARTED_NEXT_STREAM);
-    }
   }
+}
 
 /**
   @brief  Handle message from the Gstreamer bus
@@ -543,7 +553,7 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
         g_object_set(G_OBJECT(this->player), "uri", this->uri.c_str(), NULL);
 
         gst_element_set_state(this->player, GST_STATE_PLAYING);
-
+        
         this->notify_playback_update(PLAY_STARTED_NEXT_STREAM);
       }
       else
