@@ -34,6 +34,9 @@ class GstreamerOutput : public OutputModule, public OutputModuleFactory<Gstreame
   public:
     struct Options : public OutputModule::Options
     {
+      // Let GstreamerOutput access protected constructor
+      friend class GstreamerOutput;
+
       char* audio_sink = nullptr;
       char* audio_device = nullptr;
       char* audio_pipe = nullptr;
@@ -42,6 +45,16 @@ class GstreamerOutput : public OutputModule, public OutputModuleFactory<Gstreame
       double buffer_duration = 0.0; // Buffer disbled by default, see #182
 
       std::vector<GOptionGroup*> get_option_groups(void);
+
+      static Options& get()
+      {
+        static Options options;
+        return options;
+      }
+
+      protected:
+        Options() {} // Hide away the constructor
+        Options(const Options&) = delete; // Delete copy constructor
     };
 
     GstreamerOutput(output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr) : OutputModule(play, meta) {}

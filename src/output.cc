@@ -34,7 +34,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <map>
+#include <vector>
+#include <algorithm>
 
 #include <glib.h>
 
@@ -47,19 +48,18 @@
 
 #define TAG "output"
 
-typedef OutputModule* (*Factory)();
 typedef struct output_entry_t
 {
   std::string shortname;
   std::string description;
-  Factory factory;
-  OutputModule::Options* options;
+  OutputModule* (*create)();
+  OutputModule::Options& options;
 } output_entry_t;
 
-static std::map<std::string, output_entry_t> modules = 
+static std::vector<output_entry_t> modules = 
 {
 #ifdef HAVE_GST
-    {"gst", {"gst", "GStreamer multimedia framework", GstreamerOutput::create, new GstreamerOutput::Options()}}
+  {"gst", "GStreamer multimedia framework", GstreamerOutput::create, GstreamerOutput::Options::get()}
 #else
 // this will be a runtime error, but there is not much point in waiting till then.
 #error "No output configured. You need to ./configure --with-gstreamer"
@@ -77,14 +77,11 @@ void output_dump_modules(void) {
   }
 
   printf("Available outputs:\n"); 
-  for (auto kv : modules)
-  {
-    output_entry_t module = kv.second;
-    printf(" - %s - %s%s\n", module.shortname.c_str(), module.description.c_str(), (0 == 0) ? " (default)" : "");// TODO tucker
-  }
+  for (auto& module : modules)
+    printf("\t%s - %s%s\n", module.shortname.c_str(), module.description.c_str(), (&module == &modules.front()) ? " (default)" : "");
 }
 
-int output_init(const char *shortname) {
+int output_init(const char* shortname) {
 
   if (modules.size() == 0)
   {
@@ -92,25 +89,33 @@ int output_init(const char *shortname) {
     return -1;
   }
 
-  // TODO TUCKER LAME
-  if (shortname == NULL)
-    shortname = "gst";
+  // Default to first entry if no name provided
+  std::string name(shortname ? shortname : modules.front().shortname);
 
-  if (modules.count(shortname) == 0)
+  // Locate module by shortname
+  auto it = std::find_if(modules.begin(), modules.end(), [name](output_entry_t& entry)
   {
-    Log_error(TAG, "No such output: '%s'", shortname);
+    return entry.shortname == name;
+  });
+
+  if (it == modules.end())
+  {
+    Log_error(TAG, "No such output: '%s'", name.c_str());
     return -1;
   }
 
-  output_entry_t module = modules[shortname];
+  const output_entry_t& entry = *it;
 
-  Log_info(TAG, "Using output: %s (%s)", module.shortname.c_str(), module.description.c_str());
+  Log_info(TAG, "Using output: %s (%s)", entry.shortname.c_str(), entry.description.c_str());
 
-  output_module = module.factory();
+  output_module = entry.create();
 
   assert(output_module != NULL);
   
-  output_module->initalize(*module.options);
+  output_module->initalize(entry.options);
+
+  // Free the modules list
+  modules.clear();
 
   return 0;
 }
@@ -137,11 +142,9 @@ int output_loop() {
 
 int output_add_options(GOptionContext *ctx) {
   
-  for (const auto& kv : modules)
+  for (const auto& module : modules)
   {
-    output_entry_t module = kv.second;
-
-    for (auto option : module.options->get_option_groups())
+    for (auto option : module.options.get_option_groups())
       g_option_context_add_group(ctx, option);
   }
   
