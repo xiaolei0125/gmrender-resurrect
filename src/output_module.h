@@ -1,7 +1,7 @@
 // -*- mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; -*-
 /* output_module.h - Output module interface definition
  *
- * Copyright (C) 2007   Ivo Clarysse
+ * Copyright (C) 2019   Tucker Kern
  *
  * This file is part of GMediaRender.
  *
@@ -34,26 +34,27 @@
 class OutputModule
 {
   public:
+    struct Options 
+    {
+      virtual std::vector<GOptionGroup*> get_option_groups(void) = 0;
+    };
+
     typedef struct track_state_t {int64_t duration_ns; int64_t position_ns;} track_state_t;
-  
-    const std::string shortname;
-    const std::string description;
 
     typedef enum result_t
     {
       Success = 0,
       Error = -1
     } result_t;
-
-    OutputModule(const char* name, const char* desc, output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr) : shortname(name), description(desc)
+  
+    OutputModule(output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr)
     {
       this->playback_callback = play;
       this->metadata_callback = meta;
     }
 
-    virtual result_t initalize(void) = 0;
+    virtual result_t initalize(Options& options) = 0;
 
-    virtual std::vector<GOptionGroup*> get_options(void) = 0;
     virtual std::set<std::string> get_supported_media(void) = 0;
 
     virtual void set_uri(const std::string &uri) = 0;
@@ -89,27 +90,14 @@ class OutputModule
     }
 };
 
-
-struct output_module {
-  const char *shortname;
-  const char *description;
-  int (*add_options)(GOptionContext *ctx);
-
-  // Commands.
-  int (*init)(void);
-  void (*set_uri)(const char *uri, output_update_meta_cb_t meta_info);
-  void (*set_next_uri)(const char *uri);
-  int (*play)(output_transition_cb_t transition_callback);
-  int (*stop)(void);
-  int (*pause)(void);
-  int (*seek)(gint64 position_nanos);
-
-  // parameters
-  int (*get_position)(gint64 *track_duration, gint64 *track_pos);
-  int (*get_volume)(float *);
-  int (*set_volume)(float);
-  int (*get_mute)(int *);
-  int (*set_mute)(int);
+template <class Class>
+class OutputModuleFactory 
+{
+  public:
+    static OutputModule* create()
+    { 
+      return new Class();
+    }
 };
 
 #endif

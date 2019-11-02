@@ -1,7 +1,7 @@
 // -*- mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; -*-
 /* output_gstreamer.h - Definitions for GStreamer output module
  *
- * Copyright (C) 2005-2007   Ivo Clarysse
+ * Copyright (C) 2019   Tucker Kern
  *
  * This file is part of GMediaRender.
  *
@@ -29,14 +29,30 @@
 
 #include "output_module.h"
 
-class GstreamerOutput : public OutputModule
+class GstreamerOutput : public OutputModule, public OutputModuleFactory<GstreamerOutput>
 {
   public:
-    GstreamerOutput(output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr) : OutputModule("gst", "GStreamer multimedia framework", play, meta){}
-    
-    result_t initalize(void);
+    struct Options : public OutputModule::Options
+    {
+      char* audio_sink = nullptr;
+      char* audio_device = nullptr;
+      char* audio_pipe = nullptr;
+      char* video_sink = nullptr;
+      double initial_db = 0.0;
+      double buffer_duration = 0.0; // Buffer disbled by default, see #182
 
-    std::vector<GOptionGroup*> get_options(void);
+      std::vector<GOptionGroup*> get_option_groups(void);
+    };
+
+    GstreamerOutput(output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr) : OutputModule(play, meta) {}
+    
+    result_t initalize(GstreamerOutput::Options& options);
+
+    result_t initalize(OutputModule::Options& options)
+    {
+      return this->initalize((GstreamerOutput::Options&) options);
+    }
+
     std::set<std::string> get_supported_media(void);
 
     void set_uri(const std::string &uri);
@@ -59,21 +75,11 @@ class GstreamerOutput : public OutputModule
     std::string uri;
     std::string next_uri;
 
-    struct options_t
-    {
-      char* audio_sink = nullptr;
-      char* audio_device = nullptr;
-      char* audio_pipe = nullptr;
-      char* video_sink = nullptr;
-      double initial_db = 0.0;
-      double buffer_duration = 0.0; // Buffer disbled by default, see #182
-    } options;
+    GstreamerOutput::Options options;
 
     GstState get_player_state(void);
     void next_stream(void);
     bool bus_callback(GstMessage* message);
 };
 
-extern struct output_module gstreamer_output;
-
-#endif /*  _OUTPUT_GSTREAMER_H */
+#endif

@@ -29,10 +29,12 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include <assert.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <map>
 
 #include <glib.h>
 
@@ -43,64 +45,72 @@
 #endif
 #include "output.h"
 
-static struct output_module *modules[] = {
+#define TAG "output"
+
+typedef OutputModule* (*Factory)();
+typedef struct output_entry_t
+{
+  std::string shortname;
+  std::string description;
+  Factory factory;
+  OutputModule::Options* options;
+} output_entry_t;
+
+static std::map<std::string, output_entry_t> modules = 
+{
 #ifdef HAVE_GST
-    &gstreamer_output,
+    {"gst", {"gst", "GStreamer multimedia framework", GstreamerOutput::create, new GstreamerOutput::Options()}}
 #else
-// this will be a runtime error, but there is not much point
-// in waiting till then.
+// this will be a runtime error, but there is not much point in waiting till then.
 #error "No output configured. You need to ./configure --with-gstreamer"
 #endif
 };
 
-static struct output_module *output_module = NULL;
+static OutputModule* output_module = NULL;
 
 void output_dump_modules(void) {
-  int count;
+  
+  if (modules.size() == 0)
+  {
+    printf("No outputs available.\n");
+    return;
+  }
 
-  count = sizeof(modules) / sizeof(struct output_module *);
-  if (count == 0) {
-    puts("  NONE!");
-  } else {
-    int i;
-    for (i = 0; i < count; i++) {
-      printf("Available output: %s\t%s%s\n", modules[i]->shortname,
-             modules[i]->description, (i == 0) ? " (default)" : "");
-    }
+  printf("Available outputs:\n"); 
+  for (auto kv : modules)
+  {
+    output_entry_t module = kv.second;
+    printf(" - %s - %s%s\n", module.shortname.c_str(), module.description.c_str(), (0 == 0) ? " (default)" : "");// TODO tucker
   }
 }
 
 int output_init(const char *shortname) {
-  int count;
 
-  count = sizeof(modules) / sizeof(struct output_module *);
-  if (count == 0) {
-    Log_error("output", "No output module available");
-    return -1;
-  }
-  if (shortname == NULL) {
-    output_module = modules[0];
-  } else {
-    int i;
-    for (i = 0; i < count; i++) {
-      if (strcmp(modules[i]->shortname, shortname) == 0) {
-        output_module = modules[i];
-        break;
-      }
-    }
-  }
-
-  if (output_module == NULL) {
-    Log_error("error", "ERROR: No such output module: '%s'", shortname);
+  if (modules.size() == 0)
+  {
+    Log_error(TAG, "No outputs available.");
     return -1;
   }
 
-  Log_info("output", "Using output module: %s (%s)", output_module->shortname,
-           output_module->description);
+  // TODO TUCKER LAME
+  if (shortname == NULL)
+    shortname = "gst";
 
-  if (output_module->init) {
-    return output_module->init();
+  if (modules.count(shortname) == 0)
+  {
+    Log_error(TAG, "No such output: '%s'", shortname);
+    return -1;
   }
+
+  output_entry_t module = modules[shortname];
+
+  Log_info(TAG, "Using output: %s (%s)", module.shortname.c_str(), module.description.c_str());
+
+  output_module = module.factory();
+
+  assert(output_module != NULL);
+  
+  output_module->initalize(*module.options);
 
   return 0;
 }
@@ -126,87 +136,90 @@ int output_loop() {
 }
 
 int output_add_options(GOptionContext *ctx) {
-  int count, i;
+  
+  for (const auto& kv : modules)
+  {
+    output_entry_t module = kv.second;
 
-  count = sizeof(modules) / sizeof(struct output_module *);
-  for (i = 0; i < count; ++i) {
-    if (modules[i]->add_options) {
-      int result = modules[i]->add_options(ctx);
-      if (result != 0) {
-        return result;
-      }
-    }
+    for (auto option : module.options->get_option_groups())
+      g_option_context_add_group(ctx, option);
   }
-
+  
   return 0;
 }
 
 void output_set_uri(const char *uri, output_update_meta_cb_t meta_cb) {
-  if (output_module && output_module->set_uri) {
-    output_module->set_uri(uri, meta_cb);
+  if (output_module){
+    output_module->set_uri(uri);
   }
 }
 void output_set_next_uri(const char *uri) {
-  if (output_module && output_module->set_next_uri) {
+  if (output_module) {
     output_module->set_next_uri(uri);
   }
 }
 
 int output_play(output_transition_cb_t transition_callback) {
-  if (output_module && output_module->play) {
-    return output_module->play(transition_callback);
+  if (output_module) {
+    return output_module->play();
   }
   return -1;
 }
 
 int output_pause(void) {
-  if (output_module && output_module->pause) {
+  if (output_module) {
     return output_module->pause();
   }
   return -1;
 }
 
 int output_stop(void) {
-  if (output_module && output_module->stop) {
+  if (output_module) {
     return output_module->stop();
   }
   return -1;
 }
 
 int output_seek(gint64 position_nanos) {
-  if (output_module && output_module->seek) {
+  if (output_module) {
     return output_module->seek(position_nanos);
   }
   return -1;
 }
 
 int output_get_position(gint64 *track_dur, gint64 *track_pos) {
-  if (output_module && output_module->get_position) {
-    return output_module->get_position(track_dur, track_pos);
+  if (output_module) {
+    OutputModule::track_state_t state;
+    if (output_module->get_position(&state))
+    {
+      *track_dur = state.duration_ns;
+      *track_pos = state.position_ns;
+    }
+
   }
   return -1;
 }
 
 int output_get_volume(float *value) {
-  if (output_module && output_module->get_volume) {
+  if (output_module) {
     return output_module->get_volume(value);
   }
   return -1;
 }
 int output_set_volume(float value) {
-  if (output_module && output_module->set_volume) {
+  if (output_module) {
     return output_module->set_volume(value);
   }
   return -1;
 }
 int output_get_mute(int *value) {
-  if (output_module && output_module->get_mute) {
-    return output_module->get_mute(value);
+  if (output_module) {
+    return output_module->get_mute((bool*) value);
   }
   return -1;
 }
 int output_set_mute(int value) {
-  if (output_module && output_module->set_mute) {
+  if (output_module) {
     return output_module->set_mute(value);
   }
   return -1;

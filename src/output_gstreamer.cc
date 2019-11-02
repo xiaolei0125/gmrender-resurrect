@@ -46,16 +46,59 @@
 #define TAG "gstreamer"
 
 /**
+  @brief  Return the command line options assocaited with the output module
+
+  @param  void
+  @retval std::vector<GOptionGroup*>
+*/
+std::vector<GOptionGroup*> GstreamerOutput::Options::get_option_groups()
+{
+  std::vector<GOptionGroup*> optionGroups;
+
+  GOptionGroup* option_group = g_option_group_new("gstout", "GStreamer Output Options", "Show GStreamer Output Options", NULL, NULL);
+
+  GOptionEntry option_entries[] = 
+  {
+    {"gstout-audiosink", 0, 0, G_OPTION_ARG_STRING, &this->audio_sink,
+     "GStreamer audio sink to use (autoaudiosink, alsasink, osssink, esdsink, ...)", NULL},
+
+    {"gstout-audiodevice", 0, 0, G_OPTION_ARG_STRING, &this->audio_device, 
+     "GStreamer device for the given audiosink. ", NULL},
+
+    {"gstout-audiopipe", 0, 0, G_OPTION_ARG_STRING, &this->audio_pipe,
+     "GStreamer audio sink to pipeline (gst-launch format) useful for further output format conversion.", NULL},
+
+    {"gstout-videosink", 0, 0, G_OPTION_ARG_STRING, &this->video_sink,
+     "GStreamer video sink to use (autovideosink, xvimagesink, ximagesink, ...)", NULL},
+  
+    {"gstout-buffer-duration", 0, 0, G_OPTION_ARG_DOUBLE, &this->buffer_duration,
+     "The size of the buffer in seconds. Set to zero to disable buffering.", NULL},
+
+    {"gstout-initial-volume-db", 0, 0, G_OPTION_ARG_DOUBLE, &this->initial_db,
+     "GStreamer initial volume in decibel (e.g. 0.0 = max; -6 = 1/2 max) ", NULL},
+    {NULL}
+    };
+
+  g_option_group_add_entries(option_group, option_entries);
+
+  optionGroups.push_back(option_group);
+  optionGroups.push_back(gst_init_get_option_group());
+
+  return optionGroups;
+}
+
+/**
   @brief  Initialize the output module
 
   @param  none
   @retval result_t
 */
-OutputModule::result_t GstreamerOutput::initalize(void)
+OutputModule::result_t GstreamerOutput::initalize(GstreamerOutput::Options& opts)
 {
+  // Check if Gstreamer is initalized. It should be if the options were properly loaded
   if (gst_is_initialized() == false)
   {
-    Log_warn(TAG, "Initalizeing Gstreamer without options.");
+    Log_warn(TAG, "Initalizing Gstreamer without options.");
 
     GError* error = NULL;
     if (gst_init_check(NULL, NULL, &error) == false)
@@ -65,7 +108,10 @@ OutputModule::result_t GstreamerOutput::initalize(void)
 
       return OutputModule::Error;
     }
-  } 
+  }
+
+  // Save a copy of the options
+  this->options = opts;
 
   if (this->options.audio_sink != NULL && this->options.audio_pipe != NULL) 
   {
@@ -88,6 +134,7 @@ OutputModule::result_t GstreamerOutput::initalize(void)
   {
     int64_t buffer_duration_ns = round(this->options.buffer_duration * 1.0e9);
     Log_info(TAG, "Setting buffer duration to %ldms", buffer_duration_ns / 1000000);
+
     g_object_set(G_OBJECT(this->player), "buffer-duration", (gint64) buffer_duration_ns, NULL);
   } 
   else 
@@ -97,6 +144,7 @@ OutputModule::result_t GstreamerOutput::initalize(void)
 
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(this->player));
   
+  // Attach a callback to the bus via lambda function
   gst_bus_add_watch(bus, [](GstBus* b, GstMessage* m, gpointer d) -> gboolean
   {
     return ((GstreamerOutput*) d)->bus_callback(m);
@@ -104,33 +152,35 @@ OutputModule::result_t GstreamerOutput::initalize(void)
 
   gst_object_unref(bus);
 
-  GstElement* sink = NULL;
+  // Configure audio sink
+  GstElement* asink = NULL;
   if (this->options.audio_sink)
   {
     Log_info(TAG, "Setting audio sink to %s; device=%s\n", this->options.audio_sink, this->options.audio_device ? this->options.audio_device : "");
    
-    sink = gst_element_factory_make(this->options.audio_sink, "sink");
-    if (sink == NULL)
+    asink = gst_element_factory_make(this->options.audio_sink, "sink");
+    if (asink == NULL)
       Log_error(TAG, "Couldn't create sink '%s'", this->options.audio_sink);
   }
   else if (this->options.audio_pipe) 
   {
     Log_info(TAG, "Setting audio sink-pipeline to %s\n", this->options.audio_pipe);
    
-    sink = gst_parse_bin_from_description(this->options.audio_pipe, TRUE, NULL);
-    if (sink == NULL)
+    asink = gst_parse_bin_from_description(this->options.audio_pipe, TRUE, NULL);
+    if (asink == NULL)
       Log_error(TAG, "Could not create pipeline.");
   }
 
-  if (sink != NULL)
+  if (asink != NULL)
   {
     // Add the audio device if it exists
     if (this->options.audio_device != NULL)
-      g_object_set(G_OBJECT(sink), "device", this->options.audio_device, NULL);
+      g_object_set(G_OBJECT(asink), "device", this->options.audio_device, NULL);
 
-    g_object_set(G_OBJECT(this->player), "audio-sink", sink, NULL);
+    g_object_set(G_OBJECT(this->player), "audio-sink", asink, NULL);
   }
 
+  // Configure video sink
   if (this->options.video_sink != NULL)
   {
     Log_info(TAG, "Setting video sink to %s", this->options.video_sink);
@@ -143,66 +193,26 @@ OutputModule::result_t GstreamerOutput::initalize(void)
   }
 
   if (gst_element_set_state(this->player, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE) 
-    Log_error(TAG, "Error: pipeline doesn't become ready.");
+    Log_error(TAG, "Pipeline doesn't become ready.");
   
   // Typedef a function pointer of the about-to-finish callback
   typedef void (*CallbackType)(GstElement*, gpointer);
+
+  // Attach a callback to the about-to-finish evnet via a lambda
   g_signal_connect(G_OBJECT(this->player), "about-to-finish", G_CALLBACK((CallbackType) [](GstElement* o, gpointer d) -> void
   {
     ((GstreamerOutput*) d)->next_stream();
   }), this);
   
+  // Turn mute off on the output
   this->set_mute(false);
 
+  // Set initial volume
   if (this->options.initial_db < 0)
     this->set_volume(exp(this->options.initial_db / 20 * log(10)));
 
   return OutputModule::Success;
 }
-
-/**
-  @brief  Return the command line options assocaited with the output module
-
-  @param  void
-  @retval std::vector<GOptionGroup*>
-*/
-std::vector<GOptionGroup*> GstreamerOutput::get_options()
-{
-  std::vector<GOptionGroup*> optionGroups;
-
-  GOptionGroup* option_group = g_option_group_new("gstout", "GStreamer Output Options",
-                                                  "Show GStreamer Output Options", NULL, NULL);
-
-  GOptionEntry option_entries[] = 
-  {
-    {"gstout-audiosink", 0, 0, G_OPTION_ARG_STRING, &this->options.audio_sink,
-     "GStreamer audio sink to use (autoaudiosink, alsasink, osssink, esdsink, ...)", NULL},
-
-    {"gstout-audiodevice", 0, 0, G_OPTION_ARG_STRING, &this->options.audio_device, 
-     "GStreamer device for the given audiosink. ", NULL},
-
-    {"gstout-audiopipe", 0, 0, G_OPTION_ARG_STRING, &this->options.audio_pipe,
-     "GStreamer audio sink to pipeline (gst-launch format) useful for further output format conversion.", NULL},
-
-    {"gstout-videosink", 0, 0, G_OPTION_ARG_STRING, &this->options.video_sink,
-     "GStreamer video sink to use (autovideosink, xvimagesink, ximagesink, ...)", NULL},
-  
-    {"gstout-buffer-duration", 0, 0, G_OPTION_ARG_DOUBLE, &this->options.buffer_duration,
-     "The size of the buffer in seconds. Set to zero to disable buffering.", NULL},
-
-    {"gstout-initial-volume-db", 0, 0, G_OPTION_ARG_DOUBLE, &this->options.initial_db,
-     "GStreamer initial volume in decibel (e.g. 0.0 = max; -6 = 1/2 max) ", NULL},
-    {NULL}
-    };
-
-  g_option_group_add_entries(option_group, option_entries);
-
-  optionGroups.push_back(option_group);
-  optionGroups.push_back(gst_init_get_option_group());
-
-  return optionGroups;
-}
-
 
 /**
   @brief  Get all the media types supported by this output
@@ -660,8 +670,3 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
 
   return true;
 }
-
-struct output_module gstreamer_output = {
-    .shortname = "gst",
-    .description = "GStreamer multimedia framework",
-};
