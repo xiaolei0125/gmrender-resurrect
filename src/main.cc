@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  rc = output_init(output);
+  rc = output_init(output, upnp_transport_get_transition_callback(), upnp_transport_get_metadata_callback());
   if (rc != 0) {
     Log_error("main", "ERROR: Failed to initialize Output subsystem");
     return EXIT_FAILURE;

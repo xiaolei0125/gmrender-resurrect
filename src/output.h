@@ -43,7 +43,7 @@ typedef void (*output_transition_cb_t)(enum PlayFeedback);
 // callback with changes we send back to the controlling layer.
 typedef void (*output_update_meta_cb_t)(const track_metadata_t&);
 
-int output_init(const char *shortname);
+int output_init(const char *shortname, output_transition_cb_t play_callback, output_update_meta_cb_t metadata_callback);
 int output_add_options(GOptionContext *ctx);
 void output_dump_modules(void);
 

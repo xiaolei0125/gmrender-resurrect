@@ -45,7 +45,6 @@
 #include "output_gstreamer.h"
 #endif
 #include "output.h"
-#include "upnp_transport.h"
 
 #define TAG "output"
 
@@ -82,8 +81,8 @@ void output_dump_modules(void) {
     printf("\t%s - %s%s\n", module.shortname.c_str(), module.description.c_str(), (&module == &modules.front()) ? " (default)" : "");
 }
 
-int output_init(const char* shortname) {
-
+int output_init(const char* shortname, output_transition_cb_t play_callback, output_update_meta_cb_t metadata_callback)
+{
   if (modules.size() == 0)
   {
     Log_error(TAG, "No outputs available.");
@@ -109,7 +108,7 @@ int output_init(const char* shortname) {
 
   Log_info(TAG, "Using output: %s (%s)", entry.shortname.c_str(), entry.description.c_str());
 
-  output_module = entry.create(upnp_transport_get_transition_callback(), upnp_transport_get_metadata_callback());
+  output_module = entry.create(play_callback, metadata_callback);
 
   assert(output_module != NULL);
   
