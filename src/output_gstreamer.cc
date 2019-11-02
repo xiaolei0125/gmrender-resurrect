@@ -43,6 +43,7 @@
 #include "output_module.h"
 #include "upnp_connmgr.h"
 
+#define TAG "gstreamer"
 
 /**
   @brief  Initialize the output module
@@ -58,7 +59,7 @@ OutputModule::result_t GstreamerOutput::initalize(void)
 
   if (this->options.audio_sink != NULL && this->options.audio_pipe != NULL) 
   {
-    Log_error("gstreamer", "--gstout-audosink and --gstout-audiopipe are mutually exclusive.");
+    Log_error(TAG, "--gstout-audosink and --gstout-audiopipe are mutually exclusive.");
     return OutputModule::Error;
   }
 
@@ -76,12 +77,12 @@ OutputModule::result_t GstreamerOutput::initalize(void)
   if (this->options.buffer_duration > 0) 
   {
     int64_t buffer_duration_ns = round(this->options.buffer_duration * 1.0e9);
-    Log_info("gstreamer", "Setting buffer duration to %ldms", buffer_duration_ns / 1000000);
+    Log_info(TAG, "Setting buffer duration to %ldms", buffer_duration_ns / 1000000);
     g_object_set(G_OBJECT(this->player), "buffer-duration", (gint64) buffer_duration_ns, NULL);
   } 
   else 
   {
-    Log_info("gstreamer", "Buffering disabled (--gstout-buffer-duration)");
+    Log_info(TAG, "Buffering disabled (--gstout-buffer-duration)");
   }
 
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(this->player));
@@ -96,19 +97,19 @@ OutputModule::result_t GstreamerOutput::initalize(void)
   GstElement* sink = NULL;
   if (this->options.audio_sink)
   {
-    Log_info("gstreamer", "Setting audio sink to %s; device=%s\n", this->options.audio_sink, this->options.audio_device ? this->options.audio_device : "");
+    Log_info(TAG, "Setting audio sink to %s; device=%s\n", this->options.audio_sink, this->options.audio_device ? this->options.audio_device : "");
    
     sink = gst_element_factory_make(this->options.audio_sink, "sink");
     if (sink == NULL)
-      Log_error("gstreamer", "Couldn't create sink '%s'", this->options.audio_sink);
+      Log_error(TAG, "Couldn't create sink '%s'", this->options.audio_sink);
   }
   else if (this->options.audio_pipe) 
   {
-    Log_info("gstreamer", "Setting audio sink-pipeline to %s\n", this->options.audio_pipe);
+    Log_info(TAG, "Setting audio sink-pipeline to %s\n", this->options.audio_pipe);
    
     sink = gst_parse_bin_from_description(this->options.audio_pipe, TRUE, NULL);
     if (sink == NULL)
-      Log_error("gstreamer", "Could not create pipeline.");
+      Log_error(TAG, "Could not create pipeline.");
   }
 
   if (sink != NULL)
@@ -122,17 +123,17 @@ OutputModule::result_t GstreamerOutput::initalize(void)
 
   if (this->options.video_sink != NULL)
   {
-    Log_info("gstreamer", "Setting video sink to %s", this->options.video_sink);
+    Log_info(TAG, "Setting video sink to %s", this->options.video_sink);
 
     GstElement* vsink = gst_element_factory_make(this->options.video_sink, "sink");
     if (vsink == NULL)
-      Log_error("gstreamer", "Couldn't create sink '%s'", this->options.video_sink);
+      Log_error(TAG, "Couldn't create sink '%s'", this->options.video_sink);
     else
       g_object_set(G_OBJECT(this->player), "video-sink", vsink, NULL);
   }
 
   if (gst_element_set_state(this->player, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE) 
-    Log_error("gstreamer", "Error: pipeline doesn't become ready.");
+    Log_error(TAG, "Error: pipeline doesn't become ready.");
 
   // Typedef a function pointer of the about-to-finish callback
   typedef void (*CallbackType)(GstElement*, gpointer);
@@ -275,7 +276,7 @@ std::set<std::string> GstreamerOutput::get_supported_media(void)
 */
 void GstreamerOutput::set_uri(const std::string &uri)
 {
-  Log_info("gstreamer", "Set uri to '%s'", uri.c_str());
+  Log_info(TAG, "Set uri to '%s'", uri.c_str());
 
   this->uri = uri;
 
@@ -293,7 +294,7 @@ void GstreamerOutput::set_uri(const std::string &uri)
 */
 void GstreamerOutput::set_next_uri(const std::string &uri)
 {
-  Log_info("gstreamer", "Set next uri to '%s'", uri.c_str());
+  Log_info(TAG, "Set next uri to '%s'", uri.c_str());
 
   this->next_uri = uri;
 }
@@ -312,14 +313,14 @@ OutputModule::result_t GstreamerOutput::play(void)
   if (this->get_player_state() != GST_STATE_PAUSED) 
   {
     if (gst_element_set_state(this->player, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE) 
-      Log_error("gstreamer", "setting play state failed (1)"); // Error, but continue; can't get worse :)
+      Log_error(TAG, "setting play state failed (1)"); // Error, but continue; can't get worse :)
 
     g_object_set(G_OBJECT(this->player), "uri", this->uri.c_str(), NULL);
   }
 
   if (gst_element_set_state(this->player, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) 
   {
-    Log_error("gstreamer", "setting play state failed (2)");
+    Log_error(TAG, "setting play state failed (2)");
     return OutputModule::Error;
   }
 
@@ -393,13 +394,13 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
   OutputModule::result_t result = OutputModule::Success;
   if (!gst_element_query_duration(this->player, query_type, (gint64*) &track->duration_ns))
   {
-    Log_error("gstreamer", "Failed to get track duration.");
+    Log_error(TAG, "Failed to get track duration.");
     result = OutputModule::Error;
   }
   
   if (!gst_element_query_position(this->player, query_type, (gint64*) &track->position_ns)) 
   {
-    Log_error("gstreamer", "Failed to get track pos");
+    Log_error(TAG, "Failed to get track pos");
     result = OutputModule::Error;
   }
   
@@ -424,7 +425,7 @@ OutputModule::result_t GstreamerOutput::get_volume(float* volume)
 
   *volume = (float) vol;
 
-  Log_info("gstreamer", "Query volume fraction: %f", vol);
+  Log_info(TAG, "Query volume fraction: %f", vol);
 
   return OutputModule::Success;
 }
@@ -437,7 +438,7 @@ OutputModule::result_t GstreamerOutput::get_volume(float* volume)
 */
 OutputModule::result_t GstreamerOutput::set_volume(float volume)
 {
-  Log_info("gstreamer", "Set volume fraction to %f", volume);
+  Log_info(TAG, "Set volume fraction to %f", volume);
   
   g_object_set(this->player, "volume", (double) volume, NULL);
 
@@ -495,7 +496,7 @@ GstState GstreamerOutput::get_player_state(void)
 */
 void GstreamerOutput::next_stream(void)
 {
-  Log_info("gstreamer", "about-to-finish cb: setting uri %s", this->next_uri.c_str());
+  Log_info(TAG, "about-to-finish cb: setting uri %s", this->next_uri.c_str());
 
   // Swap contents of next URI into current URI
   this->uri.swap(this->next_uri);
@@ -525,7 +526,7 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
   {
     case GST_MESSAGE_EOS:
     {
-      Log_info("gstreamer", "%s: End-of-stream", message->src->name);
+      Log_info(TAG, "%s: End-of-stream", message->src->name);
 
       if (this->next_uri.length() > 0)
       {
@@ -557,7 +558,7 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
       gchar* debug = NULL;
       gst_message_parse_error(message, &err, &debug);
 
-      Log_error("gstreamer", "%s: Error: %s (Debug: %s)", message->src->name, err->message, debug);
+      Log_error(TAG, "%s: Error: %s (Debug: %s)", message->src->name, err->message, debug);
 
       g_error_free(err);
       g_free(debug);
@@ -571,7 +572,7 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
       GstState oldstate, newstate, pending;
       gst_message_parse_state_changed(message, &oldstate, &newstate, &pending);
 
-      Log_info("gstreamer", "Source: %s: State change: '%s' -> '%s', "
+      Log_info(TAG, "Source: %s: State change: '%s' -> '%s', "
               "PENDING: '%s'\n", message->src->name,
               gststate_get_name(oldstate),
               gststate_get_name(newstate),
@@ -594,7 +595,7 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
         // Attempt to fetch the tag
         gchar* value = NULL;
         if (gst_tag_list_get_string(tag_list, tag_name, &value))
-          Log_info("gstreamer", "Got tag (%s) value (%s)", tag_name, value);
+          Log_info(TAG, "Got tag (%s) value (%s)", tag_name, value);
 
         // Copy into a string
         std::string new_tag(value);
