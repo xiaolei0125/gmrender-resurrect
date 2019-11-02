@@ -232,3 +232,9 @@ int output_set_mute(int value) {
   return -1;
 }
 
+std::set<std::string> output_get_supported_media(void)
+{
+  assert(output_module);
+
+  return output_module->get_supported_media();
+}

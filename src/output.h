@@ -25,6 +25,9 @@
 #ifndef _OUTPUT_H
 #define _OUTPUT_H
 
+#include <set>
+#include <string>
+
 #include <glib.h>
 #include "song-meta-data.h"
 
@@ -43,6 +46,8 @@ typedef void (*output_update_meta_cb_t)(const track_metadata_t&);
 int output_init(const char *shortname);
 int output_add_options(GOptionContext *ctx);
 void output_dump_modules(void);
+
+std::set<std::string> output_get_supported_media(void);
 
 int output_loop(void);
 
