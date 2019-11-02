@@ -690,6 +690,16 @@ static void inform_play_transition_from_output(enum PlayFeedback fb) {
   service_unlock();
 }
 
+output_transition_cb_t upnp_transport_get_transition_callback(void)
+{
+  return &inform_play_transition_from_output;
+}
+
+output_update_meta_cb_t upnp_transport_get_metadata_callback(void)
+{
+  return &update_meta_from_stream;
+}
+
 static int play(struct action_event *event) {
   if (!has_instance_id(event)) {
     return -1;

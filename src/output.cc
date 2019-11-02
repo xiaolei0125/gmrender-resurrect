@@ -45,6 +45,7 @@
 #include "output_gstreamer.h"
 #endif
 #include "output.h"
+#include "upnp_transport.h"
 
 #define TAG "output"
 
@@ -52,7 +53,7 @@ typedef struct output_entry_t
 {
   std::string shortname;
   std::string description;
-  OutputModule* (*create)();
+  OutputModule* (*create)(output_transition_cb_t play, output_update_meta_cb_t meta);
   OutputModule::Options& options;
 } output_entry_t;
 
@@ -108,7 +109,7 @@ int output_init(const char* shortname) {
 
   Log_info(TAG, "Using output: %s (%s)", entry.shortname.c_str(), entry.description.c_str());
 
-  output_module = entry.create();
+  output_module = entry.create(upnp_transport_get_transition_callback(), upnp_transport_get_metadata_callback());
 
   assert(output_module != NULL);
   

@@ -94,9 +94,9 @@ template <class Class>
 class OutputModuleFactory 
 {
   public:
-    static OutputModule* create()
+    static OutputModule* create(output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr)
     { 
-      return new Class();
+      return new Class(play, meta);
     }
 };
 
