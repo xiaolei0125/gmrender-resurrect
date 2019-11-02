@@ -278,9 +278,7 @@ std::set<std::string> GstreamerOutput::get_supported_media(void)
       {
         GstStructure* structure = gst_caps_get_structure(capabilities, i);
 
-        std::string mime_type = std::string(gst_structure_get_name(structure));
-
-        mime_types.insert(mime_type);
+        mime_types.emplace(gst_structure_get_name(structure));
       }
     }
   }
