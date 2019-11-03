@@ -65,10 +65,10 @@ class OutputModule
     virtual result_t pause(void) = 0;
     virtual result_t seek(int64_t position_ns) = 0;
 
-    virtual result_t get_position(track_state_t* position) = 0;
-    virtual result_t get_volume(float* volume) = 0;
+    virtual result_t get_position(track_state_t& position) = 0;
+    virtual result_t get_volume(float& volume) = 0;
     virtual result_t set_volume(float volume) = 0;
-    virtual result_t get_mute(bool* mute) = 0;
+    virtual result_t get_mute(bool& mute) = 0;
     virtual result_t set_mute(bool mute) = 0;
 
   protected:

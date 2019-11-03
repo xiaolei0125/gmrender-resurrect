@@ -90,7 +90,7 @@ std::vector<GOptionGroup*> GstreamerOutput::Options::get_option_groups()
 /**
   @brief  Initialize the output module
 
-  @param  none
+  @param  opts GstreamerOuptut::Options to initalize module with
   @retval result_t
 */
 OutputModule::result_t GstreamerOutput::initalize(GstreamerOutput::Options& opts)
@@ -385,7 +385,7 @@ OutputModule::result_t GstreamerOutput::seek(int64_t position_ns)
   @param  track track_state_t to populate with duration and position information
   @retval result_t
 */
-OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
+OutputModule::result_t GstreamerOutput::get_position(track_state_t& track)
 {
   // Can't query position yet
   if (this->get_player_state() <= GST_STATE_READY)
@@ -406,13 +406,13 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
 #endif
 
   OutputModule::result_t result = OutputModule::Success;
-  if (!gst_element_query_duration(this->player, query_type, (gint64*) &track->duration_ns))
+  if (!gst_element_query_duration(this->player, query_type, (gint64*) &track.duration_ns))
   {
     Log_warn(TAG, "Failed to get track duration.");
     result = OutputModule::Error;
   }
   
-  if (!gst_element_query_position(this->player, query_type, (gint64*) &track->position_ns)) 
+  if (!gst_element_query_position(this->player, query_type, (gint64*) &track.position_ns)) 
   {
     Log_warn(TAG, "Failed to get track position.");
     result = OutputModule::Error;
@@ -420,7 +420,7 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
   
 #if (GST_VERSION_MAJOR < 1)
   // Update last known state
-  last_state = *track
+  last_state = track
 #endif
   
   return result;
@@ -432,12 +432,12 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t* track)
   @param  volume Current volume (0.0 - 1.0)
   @retval result_t
 */
-OutputModule::result_t GstreamerOutput::get_volume(float* volume)
+OutputModule::result_t GstreamerOutput::get_volume(float& volume)
 {
   double vol = 0;
   g_object_get(this->player, "volume", &vol, NULL);
 
-  *volume = (float) vol;
+  volume = (float) vol;
 
   Log_info(TAG, "Query volume fraction: %f", vol);
 
@@ -465,12 +465,12 @@ OutputModule::result_t GstreamerOutput::set_volume(float volume)
   @param  bool Mute state
   @retval result_t
 */
-OutputModule::result_t GstreamerOutput::get_mute(bool* mute)
+OutputModule::result_t GstreamerOutput::get_mute(bool& mute)
 {
   gboolean val = false;
   g_object_get(this->player, "mute", &val, NULL);
 
-  *mute = (bool) val;
+  mute = (bool) val;
 
   return OutputModule::Success;
 }

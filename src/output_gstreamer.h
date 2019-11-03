@@ -76,10 +76,10 @@ class GstreamerOutput : public OutputModule, public OutputModuleFactory<Gstreame
     result_t pause(void);
     result_t seek(int64_t position_ns);
 
-    result_t get_position(track_state_t* position);
-    result_t get_volume(float* volume);
+    result_t get_position(track_state_t& position);
+    result_t get_volume(float& volume);
     result_t set_volume(float volume);
-    result_t get_mute(bool* mute);
+    result_t get_mute(bool& mute);
     result_t set_mute(bool mute);
 
   private:
