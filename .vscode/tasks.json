@@ -7,9 +7,17 @@
       "label": "make",
       "command": "make",
       "args": ["-j4"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": true
+      },
       "problemMatcher": {
         "owner": "cpp",
-        "fileLocation": ["relative", "${workspaceFolder}"],
+        "fileLocation": ["relative", "${workspaceFolder}/src"],
         "pattern": {
           "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
           "file": 1,
@@ -22,8 +30,7 @@
     },
     {
       "label": "autogen",
-      "command": "autoreconf",
-      "args": ["-vfi"],
+      "command": "./autogen.sh",
       "problemMatcher": {}
     },
     {
