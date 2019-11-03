@@ -1,7 +1,7 @@
 // -*- mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; -*-
 /* output.c - Output module frontend
  *
- * Copyright (C) 2007 Ivo Clarysse,  (C) 2012 Henner Zeller
+ * Copyright (C) 2007 Ivo Clarysse,  (C) 2012 Henner Zeller, (C) 2019 Tucker Kern
  *
  * This file is part of GMediaRender.
  *
@@ -86,22 +86,26 @@ void Output::dump_modules(void) {
     printf("\t%s - %s%s\n", module.shortname.c_str(), module.description.c_str(), (&module == &modules.front()) ? " (default)" : "");
 }
 
-static GMainLoop *main_loop_ = NULL;
-static void exit_loop_sighandler(int sig) {
-  if (main_loop_) {
+int Output::loop() 
+{
+  static GMainLoop* main_loop = NULL;
+
+  // Define a signal handler to shutdown the loop
+  auto signal_handler = [](int sig) -> void
+  {
+    if (main_loop) {
     // TODO(hzeller): revisit - this is not safe to do.
-    g_main_loop_quit(main_loop_);
-  }
-}
+    g_main_loop_quit(main_loop);
+    }
+  };
 
-int Output::loop() {
-  /* Create a main loop that runs the default GLib main context */
-  main_loop_ = g_main_loop_new(NULL, FALSE);
+  // Create a main loop that runs the default GLib main context
+  main_loop = g_main_loop_new(NULL, FALSE);
 
-  signal(SIGINT, &exit_loop_sighandler);
-  signal(SIGTERM, &exit_loop_sighandler);
+  signal(SIGINT, signal_handler);
+  signal(SIGTERM, signal_handler);
 
-  g_main_loop_run(main_loop_);
+  g_main_loop_run(main_loop);
 
   return 0;
 }
