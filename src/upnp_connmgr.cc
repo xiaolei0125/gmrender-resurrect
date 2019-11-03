@@ -2,6 +2,7 @@
 /* upnp_connmgr.c - UPnP Connection Manager routines
  *
  * Copyright (C) 2005-2007   Ivo Clarysse
+ * Copyright (C) 2019        Tucker Kern
  *
  * This file is part of GMediaRender.
  *

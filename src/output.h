@@ -1,7 +1,7 @@
 // -*- mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; -*-
 /* output.h - Output module frontend
  *
- * Copyright (C) 2007 Ivo Clarysse,  (C) 2012 Henner Zeller
+ * Copyright (C) 2007 Ivo Clarysse,  (C) 2012 Henner Zeller, (C) 2019 Tucker Kern
  *
  * This file is part of GMediaRender.
  *
