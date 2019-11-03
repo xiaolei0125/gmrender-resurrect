@@ -297,11 +297,6 @@ void GstreamerOutput::set_uri(const std::string &uri)
   Log_info(TAG, "Set uri to '%s'", uri.c_str());
 
   this->uri = uri;
-
-  // TODO Tucker Not sure how I feel about this callback. Is it really the 
-  // job of the output to provide meta data updates?
-  //meta_update_callback_ = meta_cb;
-  //SongMetaData_clear(&song_meta_);
 }
 
 /**
@@ -325,9 +320,6 @@ void GstreamerOutput::set_next_uri(const std::string &uri)
 */
 OutputModule::result_t GstreamerOutput::play(void)
 {
-  // TODO Tucker callbacks
-  //play_trans_callback_ = callback;
-
   if (this->get_player_state() != GST_STATE_PAUSED) 
   {
     if (gst_element_set_state(this->player, GST_STATE_READY) == GST_STATE_CHANGE_FAILURE) 
