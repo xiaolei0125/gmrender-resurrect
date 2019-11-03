@@ -45,27 +45,27 @@ namespace Output
 
   typedef std::set<std::string> mime_type_set_t;
 
-  int init(const char *shortname, playback_callback_t play_callback, metadata_callback_t metadata_callback);
-  int add_options(GOptionContext *ctx);
+  int add_options(GOptionContext* ctx);
   void dump_modules(void);
+  int loop(void);
+
+  int init(const char* shortname, playback_callback_t play_callback, metadata_callback_t metadata_callback);
 
   mime_type_set_t get_supported_media(void);
 
-  int loop(void);
-
-  void set_uri(const char *uri);
-  void set_next_uri(const char *uri);
+  void set_uri(const char* uri);
+  void set_next_uri(const char* uri);
 
   int play(void);
-  int stop(void);
   int pause(void);
-  int get_position(gint64 *track_dur_nanos, gint64 *track_pos_nanos);
-  int seek(gint64 position_nanos);
+  int stop(void);
+  int seek(int64_t position_nanos);
 
-  int get_volume(float *v);
-  int set_volume(float v);
-  int get_mute(int *m);
-  int set_mute(int m);
+  int get_position(int64_t& duration, int64_t& position);
+  int get_volume(float& value);
+  int set_volume(float value);
+  int get_mute(bool& value);
+  int set_mute(bool value);
 };
 
 #endif /* _OUTPUT_H */

@@ -62,6 +62,17 @@ static std::vector<output_entry_t> modules =
 
 static OutputModule* output_module = NULL;
 
+int Output::add_options(GOptionContext* ctx)
+{
+  for (const auto& module : modules)
+  {
+    for (auto option : module.options.get_option_groups())
+      g_option_context_add_group(ctx, option);
+  }
+  
+  return 0;
+}
+
 void Output::dump_modules(void) {
   
   if (modules.size() == 0)
@@ -73,6 +84,26 @@ void Output::dump_modules(void) {
   printf("Available outputs:\n"); 
   for (auto& module : modules)
     printf("\t%s - %s%s\n", module.shortname.c_str(), module.description.c_str(), (&module == &modules.front()) ? " (default)" : "");
+}
+
+static GMainLoop *main_loop_ = NULL;
+static void exit_loop_sighandler(int sig) {
+  if (main_loop_) {
+    // TODO(hzeller): revisit - this is not safe to do.
+    g_main_loop_quit(main_loop_);
+  }
+}
+
+int Output::loop() {
+  /* Create a main loop that runs the default GLib main context */
+  main_loop_ = g_main_loop_new(NULL, FALSE);
+
+  signal(SIGINT, &exit_loop_sighandler);
+  signal(SIGTERM, &exit_loop_sighandler);
+
+  g_main_loop_run(main_loop_);
+
+  return 0;
 }
 
 int Output::init(const char* shortname, Output::playback_callback_t play_callback, Output::metadata_callback_t metadata_callback)
@@ -114,85 +145,64 @@ int Output::init(const char* shortname, Output::playback_callback_t play_callbac
   return 0;
 }
 
-static GMainLoop *main_loop_ = NULL;
-static void exit_loop_sighandler(int sig) {
-  if (main_loop_) {
-    // TODO(hzeller): revisit - this is not safe to do.
-    g_main_loop_quit(main_loop_);
-  }
+Output::mime_type_set_t Output::get_supported_media(void)
+{
+  assert(output_module);
+
+  return output_module->get_supported_media();
 }
 
-int Output::loop() {
-  /* Create a main loop that runs the default GLib main context */
-  main_loop_ = g_main_loop_new(NULL, FALSE);
+void Output::set_uri(const char *uri)
+{
+  assert(output_module);
 
-  signal(SIGINT, &exit_loop_sighandler);
-  signal(SIGTERM, &exit_loop_sighandler);
-
-  g_main_loop_run(main_loop_);
-
-  return 0;
+  output_module->set_uri(uri);
 }
 
-int Output::add_options(GOptionContext *ctx) {
-  
-  for (const auto& module : modules)
-  {
-    for (auto option : module.options.get_option_groups())
-      g_option_context_add_group(ctx, option);
-  }
-  
-  return 0;
+void Output::set_next_uri(const char *uri) 
+{
+  assert(output_module);
+
+  output_module->set_next_uri(uri);
 }
 
-void Output::set_uri(const char *uri) {
-  if (output_module){
-    output_module->set_uri(uri);
-  }
-}
-void Output::set_next_uri(const char *uri) {
-  if (output_module) {
-    output_module->set_next_uri(uri);
-  }
+int Output::play() 
+{
+  assert(output_module);
+
+  return output_module->play();
 }
 
-int Output::play() {
-  if (output_module) {
-    return output_module->play();
-  }
-  return -1;
+int Output::pause(void) 
+{
+  assert(output_module);
+
+  return output_module->pause();
 }
 
-int Output::pause(void) {
-  if (output_module) {
-    return output_module->pause();
-  }
-  return -1;
+int Output::stop(void) 
+{
+  assert(output_module);
+
+  return output_module->stop();
 }
 
-int Output::stop(void) {
-  if (output_module) {
-    return output_module->stop();
-  }
-  return -1;
+int Output::seek(int64_t position_nanos) 
+{
+  assert(output_module);
+
+  return output_module->seek(position_nanos);
 }
 
-int Output::seek(gint64 position_nanos) {
-  if (output_module) {
-    return output_module->seek(position_nanos);
-  }
-  return -1;
-}
-
-int Output::get_position(gint64 *track_dur, gint64 *track_pos) {
-  if (output_module == NULL)
-    return -1; // TODO we should probably assert(output_module != NULL)
+int Output::get_position(int64_t& duration_ns, int64_t& position_ns)
+{
+  assert(output_module);
 
   OutputModule::track_state_t state;
-  if (output_module->get_position(&state) == OutputModule::Success)
+  if (output_module->get_position(state) == OutputModule::Success)
   {
-    *track_dur = state.duration_ns;
-    *track_pos = state.position_ns;
+    duration_ns = state.duration_ns;
+    position_ns = state.position_ns;
 
     return 0;
   }
@@ -200,34 +210,30 @@ int Output::get_position(gint64 *track_dur, gint64 *track_pos) {
   return -1;
 }
 
-int Output::get_volume(float *value) {
-  if (output_module) {
-    return output_module->get_volume(value);
-  }
-  return -1;
-}
-int Output::set_volume(float value) {
-  if (output_module) {
-    return output_module->set_volume(value);
-  }
-  return -1;
-}
-int Output::get_mute(int *value) {
-  if (output_module) {
-    return output_module->get_mute((bool*) value);
-  }
-  return -1;
-}
-int Output::set_mute(int value) {
-  if (output_module) {
-    return output_module->set_mute(value);
-  }
-  return -1;
-}
-
-Output::mime_type_set_t Output::get_supported_media(void)
+int Output::get_volume(float& value) 
 {
   assert(output_module);
 
-  return output_module->get_supported_media();
+  return output_module->get_volume(value);
+}
+
+int Output::set_volume(float value) 
+{
+  assert(output_module);
+
+  return output_module->set_volume(value);
+}
+
+int Output::get_mute(bool& value) 
+{
+  assert(output_module);
+
+  return output_module->get_mute(value);
+}
+
+int Output::set_mute(bool value) 
+{
+  assert(output_module);
+
+  return output_module->set_mute(value);
 }

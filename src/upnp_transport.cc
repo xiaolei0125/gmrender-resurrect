@@ -592,7 +592,7 @@ static void *thread_update_track_time(void *userdata) {
     usleep(500000);  // 500ms
     service_lock();
     gint64 duration, position;
-    const int pos_result = Output::get_position(&duration, &position);
+    const int pos_result = Output::get_position(duration, position);
     if (pos_result == 0) {
       if (duration != last_duration) {
         print_upnp_time(tbuf, sizeof(tbuf), duration);
