@@ -156,15 +156,15 @@ OutputModule::result_t GstreamerOutput::initalize(GstreamerOutput::Options& opts
   GstElement* asink = NULL;
   if (this->options.audio_sink)
   {
-    Log_info(TAG, "Setting audio sink to %s; device=%s\n", this->options.audio_sink, this->options.audio_device ? this->options.audio_device : "");
+    Log_info(TAG, "Setting audio sink to '%s'; device=%s\n", this->options.audio_sink, this->options.audio_device ? this->options.audio_device : "");
    
     asink = gst_element_factory_make(this->options.audio_sink, "sink");
     if (asink == NULL)
-      Log_error(TAG, "Couldn't create sink '%s'", this->options.audio_sink);
+      Log_error(TAG, "Could not create sink.");
   }
   else if (this->options.audio_pipe) 
   {
-    Log_info(TAG, "Setting audio sink-pipeline to %s\n", this->options.audio_pipe);
+    Log_info(TAG, "Setting audio sink-pipeline to '%s'\n", this->options.audio_pipe);
    
     asink = gst_parse_bin_from_description(this->options.audio_pipe, TRUE, NULL);
     if (asink == NULL)
@@ -183,11 +183,11 @@ OutputModule::result_t GstreamerOutput::initalize(GstreamerOutput::Options& opts
   // Configure video sink
   if (this->options.video_sink != NULL)
   {
-    Log_info(TAG, "Setting video sink to %s", this->options.video_sink);
+    Log_info(TAG, "Setting video sink to '%s'", this->options.video_sink);
 
     GstElement* vsink = gst_element_factory_make(this->options.video_sink, "sink");
     if (vsink == NULL)
-      Log_error(TAG, "Couldn't create sink '%s'", this->options.video_sink);
+      Log_error(TAG, "Could not create sink.");
     else
       g_object_set(G_OBJECT(this->player), "video-sink", vsink, NULL);
   }
@@ -518,7 +518,7 @@ GstState GstreamerOutput::get_player_state(void)
 */
 void GstreamerOutput::next_stream(void)
 {
-  Log_info(TAG, "about-to-finish cb: setting uri %s", this->next_uri.c_str());
+  Log_info(TAG, "about-to-finish cb: set uri to '%s'", this->next_uri.c_str());
 
   // Swap contents of next URI into current URI
   this->uri.swap(this->next_uri);
@@ -630,7 +630,7 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
         
         tag.swap(new_tag);
         
-        Log_info(TAG, "Got tag (%s) value (%s)", tag_name, tag.c_str());
+        Log_info(TAG, "Got tag: '%s' value: '%s'", tag_name, tag.c_str());
 
         return true;
       };
