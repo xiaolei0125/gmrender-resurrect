@@ -66,7 +66,7 @@ class GstreamerOutput : public OutputModule, public OutputModuleFactory<Gstreame
       return this->initalize((GstreamerOutput::Options&) options);
     }
 
-    std::set<std::string> get_supported_media(void);
+    Output::mime_type_set_t get_supported_media(void);
 
     void set_uri(const std::string &uri);
     void set_next_uri(const std::string &uri);

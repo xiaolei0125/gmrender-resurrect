@@ -43,11 +43,13 @@ namespace Output
   typedef void (*playback_callback_t)(output_state_t);
   typedef void (*metadata_callback_t)(const track_metadata_t&);
 
+  typedef std::set<std::string> mime_type_set_t;
+
   int init(const char *shortname, playback_callback_t play_callback, metadata_callback_t metadata_callback);
   int add_options(GOptionContext *ctx);
   void dump_modules(void);
 
-  std::set<std::string> get_supported_media(void);
+  mime_type_set_t get_supported_media(void);
 
   int loop(void);
 

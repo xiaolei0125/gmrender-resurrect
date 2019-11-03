@@ -218,9 +218,9 @@ OutputModule::result_t GstreamerOutput::initalize(GstreamerOutput::Options& opts
   @brief  Get all the media types supported by this output
 
   @param  none
-  @retval std::set<std::string>
+  @retval Output::mime_type_set_t
 */
-std::set<std::string> GstreamerOutput::get_supported_media(void)
+Output::mime_type_set_t GstreamerOutput::get_supported_media(void)
 {
   GstRegistry* registry = NULL;
 
@@ -230,7 +230,7 @@ std::set<std::string> GstreamerOutput::get_supported_media(void)
   registry = gst_registry_get();
 #endif
 
-  std::set<std::string> mime_types;
+  Output::mime_type_set_t mime_types;
 
   // Fetch a list of all element factories
   const GList* features = gst_registry_get_feature_list(registry, GST_TYPE_ELEMENT_FACTORY);

@@ -55,7 +55,7 @@ class OutputModule
 
     virtual result_t initalize(Options& options) = 0;
 
-    virtual std::set<std::string> get_supported_media(void) = 0;
+    virtual Output::mime_type_set_t get_supported_media(void) = 0;
 
     virtual void set_uri(const std::string &uri) = 0;
     virtual void set_next_uri(const std::string &uri) = 0;

@@ -225,7 +225,7 @@ int Output::set_mute(int value) {
   return -1;
 }
 
-std::set<std::string> Output::get_supported_media(void)
+Output::mime_type_set_t Output::get_supported_media(void)
 {
   assert(output_module);
 
