@@ -395,7 +395,7 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t& track)
   static track_state_t last_state;
 
   // playbin2 does not allow to query while paused, return last known state
-  *track = last_state;
+  track = last_state;
   if (this->get_player_state() != GST_STATE_PLAYING)
     return OutputModule::Success;
 
@@ -420,7 +420,7 @@ OutputModule::result_t GstreamerOutput::get_position(track_state_t& track)
   
 #if (GST_VERSION_MAJOR < 1)
   // Update last known state
-  last_state = track
+  last_state = track;
 #endif
   
   return result;
