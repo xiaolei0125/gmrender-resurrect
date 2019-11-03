@@ -47,7 +47,7 @@ class OutputModule
       Error = -1
     } result_t;
   
-    OutputModule(output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr)
+    OutputModule(Output::playback_callback_t play = nullptr, Output::metadata_callback_t meta = nullptr)
     {
       this->playback_callback = play;
       this->metadata_callback = meta;
@@ -74,13 +74,13 @@ class OutputModule
   protected:
     track_metadata_t metadata;
 
-    output_transition_cb_t playback_callback = nullptr;
-    output_update_meta_cb_t metadata_callback = nullptr;
+    Output::playback_callback_t playback_callback = nullptr;
+    Output::metadata_callback_t metadata_callback = nullptr;
 
-    virtual void notify_playback_update(PlayFeedback feedback)
+    virtual void notify_playback_update(Output::output_state_t state)
     {
       if (this->playback_callback)
-        this->playback_callback(feedback);
+        this->playback_callback(state);
     }
 
     virtual void notify_metadata_change(const track_metadata_t& metadata)
@@ -94,7 +94,7 @@ template <class Class>
 class OutputModuleFactory 
 {
   public:
-    static OutputModule* create(output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr)
+    static OutputModule* create(Output::playback_callback_t play = nullptr, Output::metadata_callback_t meta = nullptr)
     { 
       return new Class(play, meta);
     }

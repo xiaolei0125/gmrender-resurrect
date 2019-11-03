@@ -57,7 +57,7 @@ class GstreamerOutput : public OutputModule, public OutputModuleFactory<Gstreame
         Options(const Options&) = delete; // Delete copy constructor
     };
 
-    GstreamerOutput(output_transition_cb_t play = nullptr, output_update_meta_cb_t meta = nullptr) : OutputModule(play, meta) {}
+    GstreamerOutput(Output::playback_callback_t play = nullptr, Output::metadata_callback_t meta = nullptr) : OutputModule(play, meta) {}
     
     result_t initalize(GstreamerOutput::Options& options);
 

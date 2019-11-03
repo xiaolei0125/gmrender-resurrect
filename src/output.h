@@ -31,38 +31,39 @@
 #include <glib.h>
 #include "song-meta-data.h"
 
-// Feedback for the controlling part what is happening with the
-// output.
-typedef enum PlayFeedback {
-  PLAY_STOPPED,
-  PLAY_STARTED_NEXT_STREAM,
-} PlayFeedback;
-typedef void (*output_transition_cb_t)(enum PlayFeedback);
+namespace Output
+{
+  typedef enum output_state_t 
+  {
+    PlaybackStopped,
+    StartedNextStream
+  } output_state_t;
 
-// In case the stream gets to know details about the song, this is a
-// callback with changes we send back to the controlling layer.
-typedef void (*output_update_meta_cb_t)(const track_metadata_t&);
+  // Callbacks types from output to higher levels
+  typedef void (*playback_callback_t)(output_state_t);
+  typedef void (*metadata_callback_t)(const track_metadata_t&);
 
-int output_init(const char *shortname, output_transition_cb_t play_callback, output_update_meta_cb_t metadata_callback);
-int output_add_options(GOptionContext *ctx);
-void output_dump_modules(void);
+  int init(const char *shortname, playback_callback_t play_callback, metadata_callback_t metadata_callback);
+  int add_options(GOptionContext *ctx);
+  void dump_modules(void);
 
-std::set<std::string> output_get_supported_media(void);
+  std::set<std::string> get_supported_media(void);
 
-int output_loop(void);
+  int loop(void);
 
-void output_set_uri(const char *uri);
-void output_set_next_uri(const char *uri);
+  void set_uri(const char *uri);
+  void set_next_uri(const char *uri);
 
-int output_play(void);
-int output_stop(void);
-int output_pause(void);
-int output_get_position(gint64 *track_dur_nanos, gint64 *track_pos_nanos);
-int output_seek(gint64 position_nanos);
+  int play(void);
+  int stop(void);
+  int pause(void);
+  int get_position(gint64 *track_dur_nanos, gint64 *track_pos_nanos);
+  int seek(gint64 position_nanos);
 
-int output_get_volume(float *v);
-int output_set_volume(float v);
-int output_get_mute(int *m);
-int output_set_mute(int m);
+  int get_volume(float *v);
+  int set_volume(float v);
+  int get_mute(int *m);
+  int set_mute(int m);
+};
 
 #endif /* _OUTPUT_H */

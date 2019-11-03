@@ -39,7 +39,7 @@ void upnp_transport_init(struct upnp_device *);
 void upnp_transport_register_variable_listener(
   const VariableContainer::ChangeListener &listener);
 
-output_transition_cb_t upnp_transport_get_transition_callback(void);
-output_update_meta_cb_t upnp_transport_get_metadata_callback(void);
+Output::playback_callback_t upnp_transport_get_transition_callback(void);
+Output::metadata_callback_t upnp_transport_get_metadata_callback(void);
 
 #endif /* _UPNP_TRANSPORT_H */

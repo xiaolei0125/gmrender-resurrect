@@ -46,7 +46,7 @@ typedef struct output_entry_t
 {
   std::string shortname;
   std::string description;
-  OutputModule* (*create)(output_transition_cb_t play, output_update_meta_cb_t meta);
+  OutputModule* (*create)(Output::playback_callback_t, Output::metadata_callback_t);
   OutputModule::Options& options;
 } output_entry_t;
 
@@ -62,7 +62,7 @@ static std::vector<output_entry_t> modules =
 
 static OutputModule* output_module = NULL;
 
-void output_dump_modules(void) {
+void Output::dump_modules(void) {
   
   if (modules.size() == 0)
   {
@@ -75,7 +75,7 @@ void output_dump_modules(void) {
     printf("\t%s - %s%s\n", module.shortname.c_str(), module.description.c_str(), (&module == &modules.front()) ? " (default)" : "");
 }
 
-int output_init(const char* shortname, output_transition_cb_t play_callback, output_update_meta_cb_t metadata_callback)
+int Output::init(const char* shortname, Output::playback_callback_t play_callback, Output::metadata_callback_t metadata_callback)
 {
   if (modules.size() == 0)
   {
@@ -122,7 +122,7 @@ static void exit_loop_sighandler(int sig) {
   }
 }
 
-int output_loop() {
+int Output::loop() {
   /* Create a main loop that runs the default GLib main context */
   main_loop_ = g_main_loop_new(NULL, FALSE);
 
@@ -134,7 +134,7 @@ int output_loop() {
   return 0;
 }
 
-int output_add_options(GOptionContext *ctx) {
+int Output::add_options(GOptionContext *ctx) {
   
   for (const auto& module : modules)
   {
@@ -145,46 +145,46 @@ int output_add_options(GOptionContext *ctx) {
   return 0;
 }
 
-void output_set_uri(const char *uri) {
+void Output::set_uri(const char *uri) {
   if (output_module){
     output_module->set_uri(uri);
   }
 }
-void output_set_next_uri(const char *uri) {
+void Output::set_next_uri(const char *uri) {
   if (output_module) {
     output_module->set_next_uri(uri);
   }
 }
 
-int output_play() {
+int Output::play() {
   if (output_module) {
     return output_module->play();
   }
   return -1;
 }
 
-int output_pause(void) {
+int Output::pause(void) {
   if (output_module) {
     return output_module->pause();
   }
   return -1;
 }
 
-int output_stop(void) {
+int Output::stop(void) {
   if (output_module) {
     return output_module->stop();
   }
   return -1;
 }
 
-int output_seek(gint64 position_nanos) {
+int Output::seek(gint64 position_nanos) {
   if (output_module) {
     return output_module->seek(position_nanos);
   }
   return -1;
 }
 
-int output_get_position(gint64 *track_dur, gint64 *track_pos) {
+int Output::get_position(gint64 *track_dur, gint64 *track_pos) {
   if (output_module == NULL)
     return -1; // TODO we should probably assert(output_module != NULL)
 
@@ -200,32 +200,32 @@ int output_get_position(gint64 *track_dur, gint64 *track_pos) {
   return -1;
 }
 
-int output_get_volume(float *value) {
+int Output::get_volume(float *value) {
   if (output_module) {
     return output_module->get_volume(value);
   }
   return -1;
 }
-int output_set_volume(float value) {
+int Output::set_volume(float value) {
   if (output_module) {
     return output_module->set_volume(value);
   }
   return -1;
 }
-int output_get_mute(int *value) {
+int Output::get_mute(int *value) {
   if (output_module) {
     return output_module->get_mute((bool*) value);
   }
   return -1;
 }
-int output_set_mute(int value) {
+int Output::set_mute(int value) {
   if (output_module) {
     return output_module->set_mute(value);
   }
   return -1;
 }
 
-std::set<std::string> output_get_supported_media(void)
+std::set<std::string> Output::get_supported_media(void)
 {
   assert(output_module);
 

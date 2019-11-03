@@ -532,7 +532,7 @@ void GstreamerOutput::next_stream(void)
 
     // TODO(hzeller): can we figure out when we _actually_ start playing this? 
     // There are probably a couple of seconds between now and actual start.
-    this->notify_playback_update(PLAY_STARTED_NEXT_STREAM);
+    this->notify_playback_update(Output::output_state_t::StartedNextStream);
   }
 }
 
@@ -566,10 +566,10 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
 
         gst_element_set_state(this->player, GST_STATE_PLAYING);
         
-        this->notify_playback_update(PLAY_STARTED_NEXT_STREAM);
+        this->notify_playback_update(Output::output_state_t::StartedNextStream);
       }
       else
-        this->notify_playback_update(PLAY_STOPPED);
+        this->notify_playback_update(Output::output_state_t::PlaybackStopped);
 
       break;
     }
