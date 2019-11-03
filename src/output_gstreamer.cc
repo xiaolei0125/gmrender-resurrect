@@ -622,7 +622,7 @@ bool GstreamerOutput::bus_callback(GstMessage* message)
         
         tag.swap(new_tag);
         
-        Log_info(TAG, "Got tag: '%s' value: '%s'", tag_name, tag.c_str());
+        //Log_info(TAG, "Got tag: '%s' value: '%s'", tag_name, tag.c_str());
 
         return true;
       };
