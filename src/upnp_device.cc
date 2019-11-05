@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <string>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -176,9 +177,13 @@ static int handle_subscription_request(
   ithread_mutex_lock(&(priv->device_mutex));
 
   // There is really only one variable evented: LastChange
-  const char *eventvar_names[] = {"LastChange", NULL};
-  const char *eventvar_values[] = {NULL, NULL};
+  std::vector<const char*> event_var_names;
+  std::vector<const char*> event_var_values;
 
+  if (srv->last_change != NULL)
+  {
+    event_var_names.push_back(strdup("LastChange"));
+ 
   // Build the current state of the variables as one gigantic initial
   // LastChange update.
   ithread_mutex_lock(srv->service_mutex);
@@ -195,14 +200,42 @@ static int handle_subscription_request(
       builder.Add(name, value);
     }
   }
+
+    ithread_mutex_unlock(srv->service_mutex);
+    
+    const char* xml = xmlescape(builder.toXML().c_str(), 0);
+    event_var_values.push_back(xml);
+  }
+  else
+  {
+    ithread_mutex_lock(srv->service_mutex);
+    const int var_count = srv->variable_container->variable_count();
+    
+    for (int i = 0; i < var_count; ++i) 
+    {
+      std::string name;
+      const std::string &value = srv->variable_container->Get(i, &name);
+      
+      // TODO Instead get the "meta" and check for eventing type
+      if (name.find("A_ARG_TYPE_") != std::string::npos)
+        continue;
+
+      assert(name.find("LastChange") == std::string::npos);
+
+      // Make duplicates so we can free latter
+      event_var_names.push_back(strdup(name.c_str()));
+      event_var_values.push_back(strdup(value.c_str()));
+    }
+
   ithread_mutex_unlock(srv->service_mutex);
-  const std::string &xml_value = builder.toXML();
-  Log_info("upnp", "Initial variable sync: %s", xml_value.c_str());
-  eventvar_values[0] = xmlescape(xml_value.c_str(), 0);
+  }
+
+  for (size_t i = 0; i < event_var_names.size(); i++)
+    Log_info("upnp", "Initial variable sync: %s - %s", event_var_names[i], event_var_values[i]);
 
   const char *sid = UpnpSubscriptionRequest_get_SID_cstr(sr_event);
   rc = UpnpAcceptSubscription(priv->device_handle, udn, serviceId,
-                              eventvar_names, eventvar_values, 1, sid);
+                              event_var_names.data(), event_var_values.data(), event_var_values.size(), sid);
   if (rc == UPNP_E_SUCCESS) {
     result = 0;
   } else {
@@ -212,7 +245,11 @@ static int handle_subscription_request(
 
   ithread_mutex_unlock(&(priv->device_mutex));
 
-  free((char *)eventvar_values[0]);
+  for (size_t i = 0; i < event_var_names.size(); i++)
+  {
+    free((void*) event_var_names[i]);
+    free((void*) event_var_values[i]);
+  }
 
   return result;
 }
