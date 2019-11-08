@@ -594,7 +594,7 @@ bool GstreamerOutput::BusCallback(GstMessage* message) {
       GstTagList* tag_list = NULL;
       gst_message_parse_tag(message, &tag_list);
 
-      auto attemptTagUpdate = [tag_list](std::string& tag,
+      auto attemptTagUpdate = [tag_list](TrackMetadata::Entry& tag,
                                          const char* tag_name) -> bool {
         // Attempt to fetch the tag
         gchar* value = NULL;
@@ -607,9 +607,9 @@ bool GstreamerOutput::BusCallback(GstMessage* message) {
         // Free the tag buffer
         g_free(value);
 
-        if (tag.compare(new_tag) == 0) return false;  // Identical tags
+        if (new_tag.compare(tag) == 0) return false;  // Identical tags
 
-        tag.swap(new_tag);
+        tag = new_tag;
 
         // Log_info(TAG, "Got tag: '%s' value: '%s'", tag_name, tag.c_str());
 
@@ -618,11 +618,11 @@ bool GstreamerOutput::BusCallback(GstMessage* message) {
 
       bool notify = false;
 
-      notify |= attemptTagUpdate(this->metadata.title, GST_TAG_TITLE);
-      notify |= attemptTagUpdate(this->metadata.artist, GST_TAG_ARTIST);
-      notify |= attemptTagUpdate(this->metadata.album, GST_TAG_ALBUM);
-      notify |= attemptTagUpdate(this->metadata.genre, GST_TAG_GENRE);
-      notify |= attemptTagUpdate(this->metadata.composer, GST_TAG_COMPOSER);
+      notify |= attemptTagUpdate(this->metadata[TrackMetadata::Tag::kTitle], GST_TAG_TITLE);
+      notify |= attemptTagUpdate(this->metadata[TrackMetadata::Tag::kArtist], GST_TAG_ARTIST);
+      notify |= attemptTagUpdate(this->metadata[TrackMetadata::Tag::kAlbum], GST_TAG_ALBUM);
+      notify |= attemptTagUpdate(this->metadata[TrackMetadata::Tag::kGenre], GST_TAG_GENRE);
+      notify |= attemptTagUpdate(this->metadata[TrackMetadata::Tag::kCreator], GST_TAG_COMPOSER);
 
       if (notify) this->NotifyMetadataChange(this->metadata);
 
