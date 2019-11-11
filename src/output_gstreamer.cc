@@ -618,11 +618,11 @@ bool GstreamerOutput::BusCallback(GstMessage* message) {
 
       bool notify = false;
 
-      notify |= attemptTagUpdate(this->metadata.title, GST_TAG_TITLE);
-      notify |= attemptTagUpdate(this->metadata.artist, GST_TAG_ARTIST);
-      notify |= attemptTagUpdate(this->metadata.album, GST_TAG_ALBUM);
-      notify |= attemptTagUpdate(this->metadata.genre, GST_TAG_GENRE);
-      notify |= attemptTagUpdate(this->metadata.composer, GST_TAG_COMPOSER);
+      notify |= attemptTagUpdate(this->metadata[TrackMetadata::Tag::kTitle], GST_TAG_TITLE);
+      notify |= attemptTagUpdate(this->metadata[TrackMetadata::Tag::kArtist], GST_TAG_ARTIST);
+      notify |= attemptTagUpdate(this->metadata[TrackMetadata::Tag::kAlbum], GST_TAG_ALBUM);
+      notify |= attemptTagUpdate(this->metadata[TrackMetadata::Tag::kGenre], GST_TAG_GENRE);
+      notify |= attemptTagUpdate(this->metadata[TrackMetadata::Tag::kCreator], GST_TAG_COMPOSER);
 
       if (notify) this->NotifyMetadataChange(this->metadata);
 
