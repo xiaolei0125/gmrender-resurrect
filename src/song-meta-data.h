@@ -67,7 +67,7 @@ class TrackMetadata
     {
       assert(this->tags.count(tag));
 
-      return (std::string&) this->tags.at(tag);
+      return this->tags.at(tag).value;
     }
 
     std::string& operator[](Tag tag)
