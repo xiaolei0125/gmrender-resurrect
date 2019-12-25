@@ -91,10 +91,9 @@ class TrackMetadata
       return invalid_tag;
     }
     
-    std::string ToXml(void) const;
-    std::string ToXml(const std::string& xml) const;
+    std::string ToXml(const std::string& xml = "") const;
 
-private:
+  private:
     class Entry
     {
       public:
@@ -112,19 +111,21 @@ private:
       id++;
     }
   
-  std::unordered_map<std::string, Tag> name_tag_map =
-  {
-    {"artist",      kArtist},
-    {"title",       kTitle},
-    {"album",       kAlbum},
-    {"composer",    kCreator},
-    {"genre",       kGenre},
-    // To yet implemented
-    //{"date",        kDate},
-    //{"datetime",    kDate},
-    //{"tracknumber", kTrackNumber},
-    //{"bitrate",     kBitrate},
-  };
+    std::unordered_map<std::string, Tag> name_tag_map =
+    {
+      {"artist",      kArtist},
+      {"title",       kTitle},
+      {"album",       kAlbum},
+      {"composer",    kCreator},
+      {"genre",       kGenre},
+      // To yet implemented
+      //{"date",        kDate},
+      //{"datetime",    kDate},
+      //{"tracknumber", kTrackNumber},
+      //{"bitrate",     kBitrate},
+    };
+
+  void CreateXmlRoot(pugi::xml_document& xml_document) const;
 };
 
 #endif  // _SONG_META_DATA_H
