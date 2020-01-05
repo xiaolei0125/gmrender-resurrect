@@ -37,6 +37,13 @@
 class TrackMetadata
 {
   public:
+    class IEntry
+    {
+      public:
+        virtual IEntry& operator=(const std::string& other) = 0;
+        virtual operator const std::string&() const = 0;
+    };
+
     typedef enum Tag
     { 
       kTitle = 0, // Title must be first 
@@ -51,13 +58,18 @@ class TrackMetadata
       //kBitrate,
     } Tag;
 
+    // "Object" required elements/attributes
+    // ID, parentID, title, class, restricted
+
+    // Res tag must have protocolInfo
+
     TrackMetadata(void) 
     {
-      tags.emplace(kTitle,   "dc:title");
-      tags.emplace(kArtist,  "upnp:artist");
-      tags.emplace(kAlbum,   "upnp:album");
-      tags.emplace(kGenre,   "upnp:genre");
-      tags.emplace(kCreator, "dc:creator");
+      tags.emplace(kTitle,   Entry("dc:title", this));
+      tags.emplace(kArtist,  Entry("upnp:artist", this));
+      tags.emplace(kAlbum,   Entry("upnp:album", this));
+      tags.emplace(kGenre,   Entry("upnp:genre", this));
+      tags.emplace(kCreator, Entry("dc:creator", this));
       //tags.emplace(kClass,   "upnp:class");
       //tags.emplace(kDate,    "dc:date");
       //tags.emplace(kTrackNumber,    "upnp:originalTrackNumber");
@@ -67,41 +79,53 @@ class TrackMetadata
     {
       assert(this->tags.count(tag));
 
-      return this->tags.at(tag).value;
+      return this->tags.at(tag);
     }
 
-    std::string& operator[](Tag tag)
+    IEntry& operator[](Tag tag)
     {
       assert(this->tags.count(tag));
 
-      // Assume if someone grabs a non-const tag it'll be updated
-      this->notify();
-
-      return this->tags.at(tag).value;
+      return this->tags.at(tag);
     }
 
-    std::string& operator[](const char* name)
+    IEntry& operator[](const char* name)
     {
-      static std::string invalid_tag;
+      static Entry invalid_entry("null", this);
 
       if (name_tag_map.count(name))
         return (*this)[name_tag_map.at(name)];
 
       Log_warn("Metadata", "Unsupported tag name '%s'", name);
-      return invalid_tag;
+      return invalid_entry;
     }
     
     std::string ToXml(const std::string& xml = "") const;
 
   private:
-    class Entry
-    {
-      public:
-        Entry(const std::string& k) : key(k) {}
+  class Entry : public IEntry
+  {
+    public:
+      Entry(const std::string& k, TrackMetadata* const p) : parent(*p), key(k) {}
 
-        const std::string key;
-        std::string value;
-    };
+      Entry& operator=(const std::string& other)
+      {          
+        if (value.compare(other) == 0) return *this;  // Identical tags
+
+        value.assign(other);
+        parent.notify();
+        return *this;
+      }
+
+      operator const std::string&() const
+      {
+        return value;
+      }
+
+      TrackMetadata& parent;
+      const std::string key;
+      std::string value;
+  };
 
     uint32_t id = 0;
     std::map<Tag, Entry> tags;
@@ -118,7 +142,7 @@ class TrackMetadata
       {"album",       kAlbum},
       {"composer",    kCreator},
       {"genre",       kGenre},
-      // To yet implemented
+      // Not yet implemented
       //{"date",        kDate},
       //{"datetime",    kDate},
       //{"tracknumber", kTrackNumber},

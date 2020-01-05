@@ -594,7 +594,7 @@ bool GstreamerOutput::BusCallback(GstMessage* message) {
       GstTagList* tag_list = NULL;
       gst_message_parse_tag(message, &tag_list);
 
-      auto attemptTagUpdate = [tag_list](std::string& tag,
+      auto attemptTagUpdate = [tag_list](TrackMetadata::IEntry& tag,
                                          const char* tag_name) -> bool {
         // Attempt to fetch the tag
         gchar* value = NULL;
@@ -607,11 +607,9 @@ bool GstreamerOutput::BusCallback(GstMessage* message) {
         // Free the tag buffer
         g_free(value);
 
-        if (tag.compare(new_tag) == 0) return false;  // Identical tags
+        tag = new_tag;
 
-        tag.swap(new_tag);
-
-        // Log_info(TAG, "Got tag: '%s' value: '%s'", tag_name, tag.c_str());
+        //Log_info(TAG, "Got tag: '%s' value: '%s'", tag_name, ((std::string&) tag).c_str());
 
         return true;
       };
